@@ -4,7 +4,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import AdminDevScreen from "./AdminDevScreen";
 import penGoldLogo from "../assets/PenGoldLogo.png";
-import hole7 from "../assets/hole7.png";
+import hole7 from "../assets/Hole7.png";
 import {
   Authenticator,
   ThemeProvider,

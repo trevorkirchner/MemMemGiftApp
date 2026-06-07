@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
-import hole7 from "../assets/hole7.png";
+import hole7 from "../assets/Hole7.png";
 import penLogo from "../assets/PenGoldLogo.png";
 
 const client = generateClient<Schema>();

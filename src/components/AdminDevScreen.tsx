@@ -2076,6 +2076,15 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
           </div>
 
           <div style={styles.headerActions}>
+            <button
+              type="button"
+              onClick={openCreateTournamentModal}
+              disabled={isWorking}
+              style={styles.primaryButton}
+            >
+              <ButtonContent icon="plus" label="Create Tournament" />
+            </button>
+
             <button type="button" onClick={loadAdminData} style={styles.secondaryButton}>
               <ButtonContent icon="refresh" label="Refresh" />
             </button>
@@ -2089,98 +2098,90 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
         ) : (
           <>
             <section style={styles.tournamentSelectorCard}>
-              <div>
-                <p style={styles.tournamentSelectorLabel}>Tournament</p>
-                <h2 style={styles.tournamentSelectorTitle}>
-                  {selectedTournament?.name ?? "No tournament selected"}
-                </h2>
-                {selectedTournament && (
-                  <div style={styles.tournamentMetaRow}>
-                    <div style={styles.tournamentMetaChip}>
-                      <span style={styles.tournamentMetaLabel}>Passcode</span>
-                      <strong style={styles.tournamentMetaValue}>
-                        {selectedTournament.passcode}
-                      </strong>
-                    </div>
+              <div style={styles.tournamentSelectorHeader}>
+                <div style={styles.tournamentTitleGroup}>
+                  <p style={styles.tournamentSelectorLabel}>Tournament</p>
 
-                    <div style={styles.tournamentMetaChip}>
-                      <span style={styles.tournamentMetaLabel}>Default Points</span>
-                      <strong style={styles.tournamentMetaValue}>
-                        {selectedTournament.defaultPoints}
-                      </strong>
-                    </div>
+                  <select
+                    aria-label="Select tournament"
+                    value={selectedTournamentId}
+                    onChange={(event) => {
+                      setSelectedTournamentId(event.target.value);
+                      setParticipantSearch("");
+                      setOrderSearch("");
+                      setGiftSearch("");
+                    }}
+                    style={styles.tournamentTitleSelect}
+                  >
+                    {tournaments.length === 0 && (
+                      <option value="">No tournaments available</option>
+                    )}
 
-                    <div style={styles.tournamentMetaChip}>
-                      <span style={styles.tournamentMetaLabel}>Overage</span>
-                      <strong style={styles.tournamentMetaValue}>
-                        {selectedTournament.allowOverPoints ? "Allowed" : "Not Allowed"}
-                      </strong>
-                    </div>
+                    {tournaments.map((tournament) => (
+                      <option key={tournament.id} value={tournament.id}>
+                        {tournament.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                    <div style={styles.tournamentMetaChip}>
-                      <span style={styles.tournamentMetaLabel}>Per Point</span>
-                      <strong style={styles.tournamentMetaValue}>
-                        {formatCurrency(selectedTournament.pointDollarValue ?? 0)}
-                      </strong>
-                    </div>
+                <div style={styles.tournamentSelectorActions}>
+                  <button
+                    type="button"
+                    onClick={openEditTournamentModal}
+                    disabled={!selectedTournament || isWorking}
+                    style={styles.secondaryButton}
+                  >
+                    <ButtonContent icon="edit" label="Edit" />
+                  </button>
+                </div>
+              </div>
 
-                    <div
-                      style={{
-                        ...styles.tournamentMetaChip,
-                        ...(selectedTournament.isOpen
-                          ? styles.tournamentOpenChip
-                          : styles.tournamentClosedChip),
-                      }}
-                    >
-                      <span style={styles.tournamentMetaLabel}>Status</span>
-                      <strong style={styles.tournamentMetaValue}>
-                        {selectedTournament.isOpen ? "Open" : "Closed"}
-                      </strong>
-                    </div>
+              {selectedTournament && (
+                <div style={styles.tournamentMetaRow}>
+                  <div style={styles.tournamentMetaChip}>
+                    <span style={styles.tournamentMetaLabel}>Passcode</span>
+                    <strong style={styles.tournamentMetaValue}>
+                      {selectedTournament.passcode}
+                    </strong>
                   </div>
-                )}
-              </div>
 
-              <div style={styles.tournamentSelectorActions}>
-                <select
-                  value={selectedTournamentId}
-                  onChange={(event) => {
-                    setSelectedTournamentId(event.target.value);
-                    setParticipantSearch("");
-                    setOrderSearch("");
-                    setGiftSearch("");
-                  }}
-                  style={styles.tournamentSelect}
-                >
-                  {tournaments.length === 0 && (
-                    <option value="">No tournaments available</option>
-                  )}
+                  <div style={styles.tournamentMetaChip}>
+                    <span style={styles.tournamentMetaLabel}>Default Points</span>
+                    <strong style={styles.tournamentMetaValue}>
+                      {selectedTournament.defaultPoints}
+                    </strong>
+                  </div>
 
-                  {tournaments.map((tournament) => (
-                    <option key={tournament.id} value={tournament.id}>
-                      {tournament.name}
-                    </option>
-                  ))}
-                </select>
+                  <div style={styles.tournamentMetaChip}>
+                    <span style={styles.tournamentMetaLabel}>Overage</span>
+                    <strong style={styles.tournamentMetaValue}>
+                      {selectedTournament.allowOverPoints ? "Allowed" : "Not Allowed"}
+                    </strong>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={openCreateTournamentModal}
-                  disabled={isWorking}
-                  style={styles.primaryButton}
-                >
-                  <ButtonContent icon="plus" label="Create Tournament" />
-                </button>
+                  <div style={styles.tournamentMetaChip}>
+                    <span style={styles.tournamentMetaLabel}>Per Point</span>
+                    <strong style={styles.tournamentMetaValue}>
+                      {formatCurrency(selectedTournament.pointDollarValue ?? 0)}
+                    </strong>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={openEditTournamentModal}
-                  disabled={!selectedTournament || isWorking}
-                  style={styles.secondaryButton}
-                >
-                  <ButtonContent icon="edit" label="Edit" />
-                </button>
-              </div>
+                  <div
+                    style={{
+                      ...styles.tournamentMetaChip,
+                      ...(selectedTournament.isOpen
+                        ? styles.tournamentOpenChip
+                        : styles.tournamentClosedChip),
+                    }}
+                  >
+                    <span style={styles.tournamentMetaLabel}>Status</span>
+                    <strong style={styles.tournamentMetaValue}>
+                      {selectedTournament.isOpen ? "Open" : "Closed"}
+                    </strong>
+                  </div>
+                </div>
+              )}
             </section>
 
             <section style={styles.statsGrid}>
@@ -3718,10 +3719,19 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "22px",
     marginBottom: "24px",
     display: "flex",
+    flexDirection: "column",
+    gap: "18px",
+  },
+  tournamentSelectorHeader: {
+    display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
-    gap: "20px",
+    alignItems: "flex-start",
+    gap: "18px",
     flexWrap: "wrap",
+  },
+  tournamentTitleGroup: {
+    minWidth: "280px",
+    flex: "1 1 420px",
   },
   tournamentSelectorLabel: {
     margin: 0,
@@ -3736,11 +3746,27 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#123c2c",
     fontSize: "26px",
   },
+  tournamentTitleSelect: {
+    width: "100%",
+    maxWidth: "640px",
+    border: "none",
+    borderBottom: "2px solid #dce8e1",
+    borderRadius: 0,
+    padding: "4px 34px 8px 0",
+    marginTop: "4px",
+    fontSize: "28px",
+    lineHeight: 1.15,
+    backgroundColor: "transparent",
+    color: "#123c2c",
+    fontWeight: 900,
+    cursor: "pointer",
+    outline: "none",
+  },
   tournamentMetaRow: {
     display: "flex",
     gap: "10px",
     flexWrap: "wrap",
-    marginTop: "14px",
+    marginTop: 0,
   },
   tournamentMetaChip: {
     border: "1px solid #dce8e1",
@@ -3790,6 +3816,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     gap: "10px",
     flexWrap: "wrap",
+    paddingTop: "2px",
   },
   statsGrid: {
     display: "grid",
