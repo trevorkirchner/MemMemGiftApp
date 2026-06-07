@@ -23,7 +23,11 @@ function App() {
   const [selectedParticipant, setSelectedParticipant] =
     useState<Participant | null>(null);
 
-  if (window.location.pathname === "/admin") {
+  const isAdminRoute =
+    window.location.pathname === "/admin" ||
+    window.location.pathname.startsWith("/admin/");
+
+  if (isAdminRoute) {
     return <AdminAuthGate />;
   }
     
