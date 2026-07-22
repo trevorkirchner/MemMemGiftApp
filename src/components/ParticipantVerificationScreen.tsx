@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
-import hole7 from "../assets/Hole7.png";
-import penLogo from "../assets/PenGoldLogo.png";
+import { clientBranding } from "../clientBranding";
 
 const client = generateClient<Schema>();
 
@@ -88,8 +87,8 @@ export default function ParticipantVerificationScreen({
         </button>
 
         <img
-            src={penLogo}
-            alt="Peninsula Logo"
+            src={clientBranding.logoUrl}
+            alt={`${clientBranding.orgName} Logo`}
             style={styles.logoImage}
         />
 
@@ -152,7 +151,7 @@ const styles: Record<string, React.CSSProperties> = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.35), rgba(10, 30, 22, 0.35)), url(${hole7})`,
+  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.35), rgba(10, 30, 22, 0.35)), url(${clientBranding.backgroundImageUrl})`,
   backgroundSize: "cover",
   backgroundPosition: "center center",
   backgroundRepeat: "no-repeat",
@@ -184,7 +183,7 @@ logoImage: {
     left: "20px",
     border: "none",
     background: "transparent",
-    color: "#123c2c",
+    color: clientBranding.primaryColor,
     fontWeight: 700,
     cursor: "pointer",
   },
@@ -192,7 +191,7 @@ logoImage: {
     width: "64px",
     height: "64px",
     borderRadius: "999px",
-    backgroundColor: "#123c2c",
+    backgroundColor: clientBranding.primaryColor,
     color: "#ffffff",
     display: "flex",
     alignItems: "center",
@@ -205,7 +204,7 @@ logoImage: {
     margin: 0,
     fontSize: "clamp(25px, 8vw, 30px)",
     lineHeight: 1.1,
-    color: "#123c2c",
+    color: clientBranding.primaryColor,
   },
   subtitle: {
     color: "#5f6f68",
@@ -248,7 +247,7 @@ logoImage: {
     fontSize: "16px",
     fontWeight: 700,
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: clientBranding.primaryColor,
     cursor: "pointer",
     marginTop: "22px",
   },

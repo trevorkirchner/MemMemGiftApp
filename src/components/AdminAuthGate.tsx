@@ -3,8 +3,7 @@ import "@aws-amplify/ui-react/styles.css";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import AdminDevScreen from "./AdminDevScreen";
-import penGoldLogo from "../assets/PenGoldLogo.png";
-import hole7 from "../assets/Hole7.png";
+import { clientBranding } from "../clientBranding";
 import {
   Authenticator,
   ThemeProvider,
@@ -25,16 +24,16 @@ const adminAuthTheme: Theme = {
           10: { value: "#eef5f0" },
           20: { value: "#dce8e1" },
           40: { value: "#86a996" },
-          60: { value: "#3e7159" },
-          80: { value: "#123c2c" },
-          90: { value: "#0b2a1f" },
-          100: { value: "#061b14" },
+          60: { value: clientBranding.primaryMidColor },
+          80: { value: clientBranding.primaryColor },
+          90: { value: clientBranding.primaryDarkColor },
+          100: { value: clientBranding.primaryDarkColor },
         },
       },
       font: {
-        primary: { value: "#123c2c" },
+        primary: { value: clientBranding.primaryColor },
         secondary: { value: "#5f6f68" },
-        interactive: { value: "#123c2c" },
+        interactive: { value: clientBranding.primaryColor },
       },
       background: {
         primary: { value: "#ffffff" },
@@ -57,30 +56,30 @@ const adminAuthTheme: Theme = {
       },
       button: {
         primary: {
-          backgroundColor: { value: "#123c2c" },
+          backgroundColor: { value: clientBranding.primaryColor },
           color: { value: "#ffffff" },
-          borderColor: { value: "#123c2c" },
+          borderColor: { value: clientBranding.primaryColor },
           _hover: {
-            backgroundColor: { value: "#0b2a1f" },
-            borderColor: { value: "#0b2a1f" },
+            backgroundColor: { value: clientBranding.primaryDarkColor },
+            borderColor: { value: clientBranding.primaryDarkColor },
           },
           _focus: {
             boxShadow: { value: "0 0 0 3px rgba(18, 60, 44, 0.25)" },
           },
         },
         link: {
-          color: { value: "#123c2c" },
+          color: { value: clientBranding.primaryColor },
           _hover: {
-            color: { value: "#0b2a1f" },
+            color: { value: clientBranding.primaryDarkColor },
           },
         },
       },
       fieldcontrol: {
         borderColor: { value: "#ccd8d1" },
         borderRadius: { value: "12px" },
-        color: { value: "#123c2c" },
+        color: { value: clientBranding.primaryColor },
         _focus: {
-          borderColor: { value: "#123c2c" },
+          borderColor: { value: clientBranding.primaryColor },
           boxShadow: { value: "0 0 0 3px rgba(18, 60, 44, 0.18)" },
         },
       },
@@ -88,8 +87,8 @@ const adminAuthTheme: Theme = {
         item: {
           color: { value: "#5f6f68" },
           _active: {
-            color: { value: "#123c2c" },
-            borderColor: { value: "#123c2c" },
+            color: { value: clientBranding.primaryColor },
+            borderColor: { value: clientBranding.primaryColor },
           },
         },
       },
@@ -225,13 +224,13 @@ function AdminAuthContent() {
     return (
       <div style={styles.authenticatorHeader}>
         <img
-          src={penGoldLogo}
-          alt="Peninsula Logo"
+          src={clientBranding.logoUrl}
+          alt={`${clientBranding.orgName} Logo`}
           style={styles.authenticatorLogo}
         />
 
         <h1 style={styles.portalTitle}>
-          Tournament Admin Portal
+          {clientBranding.adminPortalTitle}
         </h1>
       </div>
     );
@@ -253,8 +252,8 @@ function AdminAuthContent() {
         </div>
 
         <img
-          src={penGoldLogo}
-          alt="Peninsula Logo"
+          src={clientBranding.logoUrl}
+          alt={`${clientBranding.orgName} Logo`}
           style={styles.adminBarLogo}
         />
 
@@ -283,7 +282,7 @@ function AdminAuthContent() {
         <div style={styles.loginContainer}>
           {/* <img
             src={penLogo}
-            alt="Peninsula Logo"
+            alt={`${clientBranding.orgName} Logo`}
             style={styles.logo}
           /> */}
 
@@ -478,7 +477,7 @@ const styles: Record<string, React.CSSProperties> = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.45), rgba(10, 30, 22, 0.45)), url(${hole7})`,
+  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.45), rgba(10, 30, 22, 0.45)), url(${clientBranding.backgroundImageUrl})`,
   backgroundSize: "cover",
   backgroundPosition: "center center",
   backgroundRepeat: "no-repeat",
@@ -501,7 +500,7 @@ const styles: Record<string, React.CSSProperties> = {
   adminShell: {
   minHeight: "100vh",
   width: "100%",
-  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.35), rgba(10, 30, 22, 0.35)), url(${hole7})`,
+  backgroundImage: `linear-gradient(rgba(10, 30, 22, 0.35), rgba(10, 30, 22, 0.35)), url(${clientBranding.backgroundImageUrl})`,
   backgroundSize: "cover",
   backgroundPosition: "center center",
   backgroundRepeat: "no-repeat",
@@ -520,7 +519,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: "16px",
     padding: "14px 24px",
-    backgroundColor: "#123c2c",
+    backgroundColor: clientBranding.primaryColor,
     color: "#ffffff",
     boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
   },
@@ -602,7 +601,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modalTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: clientBranding.primaryColor,
     fontSize: "26px",
   },
   modalSubtitle: {
@@ -628,7 +627,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #dce8e1",
     borderRadius: "12px",
     padding: "12px 14px",
-    color: "#123c2c",
+    color: clientBranding.primaryColor,
     fontWeight: 800,
   },
   addAdminForm: {
@@ -667,7 +666,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "12px",
     padding: "12px 18px",
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: clientBranding.primaryColor,
     fontWeight: 800,
     cursor: "pointer",
   },
@@ -724,7 +723,7 @@ authenticatorLogo: {
 
 portalTitle: {
   margin: "0 0 24px",
-  color: "#123c2c",
+  color: clientBranding.primaryColor,
   fontSize: "clamp(22px, 4vw, 32px)",
   fontWeight: 900,
   lineHeight: 1.15,

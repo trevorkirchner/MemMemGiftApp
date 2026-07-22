@@ -100,6 +100,9 @@ const schema = a.schema({
       pointCost: a.integer().required(),
       quantityAvailable: a.integer(),
       sortOrder: a.integer(),
+      optionLabel: a.string(),
+      optionValues: a.string(),
+      colorOptions: a.string(),
       isActive: a.boolean().default(true),
 
       tournament: a.belongsTo("Tournament", "tournamentId"),
@@ -123,6 +126,7 @@ const schema = a.schema({
       altText: a.string(),
       sortOrder: a.integer(),
       isPrimary: a.boolean().default(false),
+      colorOptionId: a.string(),
 
       giftItem: a.belongsTo("GiftItem", "giftItemId"),
     })
@@ -142,6 +146,11 @@ const schema = a.schema({
 
       quantity: a.integer().required(),
       pointCostAtTime: a.integer().required(),
+      selectedOption: a.string(),
+      selectedOptionLabel: a.string(),
+      selectedColorId: a.string(),
+      selectedColorName: a.string(),
+      selectedColorHex: a.string(),
 
       participant: a.belongsTo("Participant", "participantId"),
       giftItem: a.belongsTo("GiftItem", "giftItemId"),
@@ -183,6 +192,11 @@ const schema = a.schema({
       titleAtTime: a.string().required(),
       descriptionAtTime: a.string(),
       pointCostAtTime: a.integer().required(),
+      selectedOptionAtTime: a.string(),
+      selectedOptionLabelAtTime: a.string(),
+      selectedColorIdAtTime: a.string(),
+      selectedColorNameAtTime: a.string(),
+      selectedColorHexAtTime: a.string(),
       quantity: a.integer().required(),
 
       order: a.belongsTo("Order", "orderId"),

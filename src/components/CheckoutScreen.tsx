@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
+import { formatGiftColor } from "../utils/giftColors";
+import { formatGiftOption } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -43,6 +45,11 @@ export default function CheckoutScreen({
         description: gift?.description || "",
         quantity: cartItem.quantity ?? 0,
         pointCost: cartItem.pointCostAtTime ?? 0,
+        selectedOption: cartItem.selectedOption ?? "",
+        selectedOptionLabel: cartItem.selectedOptionLabel ?? gift?.optionLabel ?? "",
+        selectedColorId: cartItem.selectedColorId ?? "",
+        selectedColorName: cartItem.selectedColorName ?? "",
+        selectedColorHex: cartItem.selectedColorHex ?? "",
         lineTotal: (cartItem.quantity ?? 0) * (cartItem.pointCostAtTime ?? 0),
       };
     });
@@ -154,6 +161,11 @@ export default function CheckoutScreen({
           titleAtTime: row.title,
           descriptionAtTime: row.description,
           pointCostAtTime: row.pointCost,
+          selectedOptionAtTime: row.selectedOption || null,
+          selectedOptionLabelAtTime: row.selectedOptionLabel || null,
+          selectedColorIdAtTime: row.selectedColorId || null,
+          selectedColorNameAtTime: row.selectedColorName || null,
+          selectedColorHexAtTime: row.selectedColorHex || null,
           quantity: row.quantity,
         });
       }
@@ -260,6 +272,16 @@ export default function CheckoutScreen({
                       <p style={styles.itemDetails}>
                         Qty: {row.quantity} × {row.pointCost} pts
                       </p>
+                      {row.selectedOption && (
+                        <p style={styles.itemDetails}>
+                          {formatGiftOption(row.selectedOptionLabel, row.selectedOption)}
+                        </p>
+                      )}
+                      {row.selectedColorName && (
+                        <p style={styles.itemDetails}>
+                          {formatGiftColor(row.selectedColorName)}
+                        </p>
+                      )}
                     </div>
 
                     <strong style={styles.lineTotal}>{row.lineTotal} pts</strong>
@@ -364,7 +386,7 @@ const styles: Record<string, React.CSSProperties> = {
   backButton: {
     border: "none",
     background: "transparent",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 800,
     cursor: "pointer",
     padding: 0,
@@ -383,7 +405,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: "clamp(28px, 8vw, 34px)",
     lineHeight: 1.1,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
   },
   subtitle: {
     color: "#5f6f68",
@@ -412,7 +434,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   pointsValue: {
     margin: "8px 0 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "clamp(34px, 10vw, 42px)",
     fontWeight: 800,
   },
@@ -451,7 +473,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionTitle: {
     margin: "0 0 18px",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "24px",
   },
   rows: {
@@ -470,7 +492,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   itemTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 800,
     fontSize: "16px",
   },
@@ -480,7 +502,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "14px",
   },
   lineTotal: {
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     whiteSpace: "nowrap",
   },
   summaryRow: {
@@ -497,7 +519,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: "12px",
     flexWrap: "wrap",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "20px",
     fontWeight: 800,
     marginTop: "12px",
@@ -515,7 +537,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     fontWeight: 800,
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     cursor: "pointer",
     marginTop: "20px",
   },
@@ -526,7 +548,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     fontWeight: 800,
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     cursor: "pointer",
     marginTop: "12px",
   },
@@ -550,7 +572,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
   },
   message: {
     color: "#5f6f68",

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
+import { getDefaultGiftColor, parseGiftColors } from "../utils/giftColors";
+import { getGiftOptionLabel, parseGiftOptions } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -14,7 +16,7 @@ type GiftDetailScreenProps = {
   remainingPoints: number;
   allowOverPoints: boolean;
   onBack: () => void;
-  onAddToCart: (gift: GiftItem) => void;
+  onAddToCart: (gift: GiftItem, selectedOption?: string, selectedColorId?: string) => void;
 };
 
 export default function GiftDetailScreen({
@@ -25,27 +27,65 @@ export default function GiftDetailScreen({
   onBack,
   onAddToCart,
 }: GiftDetailScreenProps) {
+  const [detailGift, setDetailGift] = useState(gift);
   const [giftImages, setGiftImages] = useState<GiftImage[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
+  const giftOptions = parseGiftOptions(detailGift.optionValues);
+  const giftColors = parseGiftColors(detailGift.colorOptions);
+  const [selectedOption, setSelectedOption] = useState(giftOptions[0] ?? "");
+  const [selectedColorId, setSelectedColorId] = useState(
+    getDefaultGiftColor(giftColors)?.id ?? ""
+  );
+  const selectedColor =
+    giftColors.find((color) => color.id === selectedColorId) ||
+    getDefaultGiftColor(giftColors);
 
   const sortedImages = useMemo(() => {
-    return [...giftImages].sort((a, b) => {
+    const orderedImages = [...giftImages].sort((a, b) => {
       if (a.isPrimary && !b.isPrimary) return -1;
       if (!a.isPrimary && b.isPrimary) return 1;
       return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
     });
-  }, [giftImages]);
+
+    if (!selectedColor) return orderedImages;
+
+    const colorImages = orderedImages.filter(
+      (image) =>
+        image.colorOptionId === selectedColor.id ||
+        selectedColor.imageIds.includes(image.id)
+    );
+
+    return colorImages.length > 0 ? colorImages : orderedImages;
+  }, [giftImages, selectedColor]);
 
   const activeImage = sortedImages[selectedImageIndex];
-  const activeImageUrl = activeImage ? imageUrls[activeImage.id] : gift.imageUrl;
+  const activeImageUrl = activeImage ? imageUrls[activeImage.id] : detailGift.imageUrl;
 
-  const cannotAfford = !allowOverPoints && (gift.pointCost ?? 0) > remainingPoints;
+  const cannotAfford = !allowOverPoints && (detailGift.pointCost ?? 0) > remainingPoints;
+  const requiresOption = giftOptions.length > 0;
+  const requiresColor = giftColors.length > 0;
+  const missingRequiredSelection =
+    (requiresOption && !selectedOption) || (requiresColor && !selectedColor);
 
   useEffect(() => {
+    setDetailGift(gift);
+    loadGiftDetails();
     loadImages();
   }, [gift.id]);
+
+  useEffect(() => {
+    const nextOptions = parseGiftOptions(detailGift.optionValues);
+    const nextColors = parseGiftColors(detailGift.colorOptions);
+
+    setSelectedOption(nextOptions[0] ?? "");
+    setSelectedColorId(getDefaultGiftColor(nextColors)?.id ?? "");
+  }, [detailGift.id, detailGift.optionValues, detailGift.colorOptions]);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+  }, [selectedColorId]);
 
   async function loadImages() {
     try {
@@ -77,6 +117,21 @@ export default function GiftDetailScreen({
     }
   }
 
+  async function loadGiftDetails() {
+    try {
+      const result = await client.models.GiftItem.get({ id: gift.id });
+
+      if (result.data) {
+        setDetailGift(result.data);
+      } else {
+        setDetailGift(gift);
+      }
+    } catch (error) {
+      console.error("Gift detail load error:", error);
+      setDetailGift(gift);
+    }
+  }
+
   function goPreviousImage() {
     setSelectedImageIndex((current) =>
       current === 0 ? Math.max(sortedImages.length - 1, 0) : current - 1
@@ -100,7 +155,7 @@ export default function GiftDetailScreen({
           <div style={styles.galleryCard}>
             <div style={styles.mainImageWrapper}>
               {activeImageUrl ? (
-                <img src={activeImageUrl} alt={gift.title} style={styles.mainImage} />
+                <img src={activeImageUrl} alt={detailGift.title} style={styles.mainImage} />
               ) : (
                 <div style={styles.placeholderImage}>
                   {isLoadingImages ? "Loading images..." : "No Image"}
@@ -134,7 +189,7 @@ export default function GiftDetailScreen({
                   >
                     <img
                       src={imageUrls[image.id]}
-                      alt={image.altText || gift.title}
+                      alt={image.altText || detailGift.title}
                       style={styles.thumbnailImage}
                     />
                   </button>
@@ -144,32 +199,79 @@ export default function GiftDetailScreen({
           </div>
 
           <aside style={styles.infoCard}>
-            <p style={styles.pointBadge}>{gift.pointCost} points</p>
+            <p style={styles.pointBadge}>{detailGift.pointCost} points</p>
 
-            <h1 style={styles.title}>{gift.title}</h1>
+            <h1 style={styles.title}>{detailGift.title}</h1>
 
             <p style={styles.description}>
-              {gift.description || "No description available."}
+              {detailGift.description || "No description available."}
             </p>
-
-            {typeof gift.quantityAvailable === "number" && (
-              <p style={styles.muted}>Quantity Available: {gift.quantityAvailable}</p>
-            )}
 
             {quantityInCart > 0 && (
               <p style={styles.inCart}>Currently in cart: {quantityInCart}</p>
             )}
 
+            {giftOptions.length > 0 && (
+              <div style={styles.optionBox}>
+                <label htmlFor="gift-option" style={styles.optionLabel}>
+                  Choose {getGiftOptionLabel(detailGift.optionLabel)}
+                </label>
+                <select
+                  id="gift-option"
+                  value={selectedOption}
+                  onChange={(event) => setSelectedOption(event.target.value)}
+                  style={styles.optionSelect}
+                >
+                  {giftOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {giftColors.length > 0 && (
+              <div style={styles.optionBox}>
+                <span style={styles.optionLabel}>Choose Color</span>
+                <div style={styles.colorGrid}>
+                  {giftColors.map((color) => (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => setSelectedColorId(color.id)}
+                      style={{
+                        ...styles.colorOption,
+                        ...(selectedColor?.id === color.id ? styles.selectedColorOption : {}),
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...styles.colorSwatch,
+                          backgroundColor: color.hex,
+                        }}
+                      />
+                      <span>{color.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => onAddToCart(gift)}
-              disabled={cannotAfford}
+              onClick={() => onAddToCart(detailGift, selectedOption, selectedColor?.id ?? "")}
+              disabled={cannotAfford || missingRequiredSelection}
               style={{
                 ...styles.addButton,
-                ...(cannotAfford ? styles.disabledButton : {}),
+                ...(cannotAfford || missingRequiredSelection ? styles.disabledButton : {}),
               }}
             >
-              {cannotAfford ? "Not Enough Points" : "Add to Cart"}
+              {cannotAfford
+                ? "Not Enough Points"
+                : missingRequiredSelection
+                  ? "Choose Options"
+                  : "Add to Cart"}
             </button>
 
             <p style={styles.muted}>Remaining Points: {remainingPoints}</p>
@@ -195,7 +297,7 @@ const styles: Record<string, React.CSSProperties> = {
   backButton: {
     border: "none",
     background: "transparent",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 800,
     cursor: "pointer",
     padding: 0,
@@ -302,7 +404,7 @@ arrowIconLeft: {
     flex: "0 0 auto",
   },
   activeThumbnail: {
-    borderColor: "#123c2c",
+    borderColor: "var(--tg-primary)",
   },
   thumbnailImage: {
     width: "clamp(70px, 20vw, 86px)",
@@ -324,14 +426,14 @@ arrowIconLeft: {
   pointBadge: {
     display: "inline-block",
     backgroundColor: "#e5f0ea",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     borderRadius: "999px",
     padding: "8px 12px",
     fontWeight: 900,
     margin: 0,
   },
   title: {
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "clamp(26px, 8vw, 34px)",
     lineHeight: 1.1,
     margin: "18px 0 12px",
@@ -348,7 +450,7 @@ arrowIconLeft: {
     lineHeight: 1.5,
   },
   inCart: {
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 900,
   },
   addButton: {
@@ -357,7 +459,7 @@ arrowIconLeft: {
     borderRadius: "14px",
     padding: "15px 18px",
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     fontWeight: 900,
     cursor: "pointer",
     marginTop: "18px",
@@ -366,5 +468,56 @@ arrowIconLeft: {
   disabledButton: {
     backgroundColor: "#9aa7a0",
     cursor: "not-allowed",
+  },
+  optionBox: {
+    border: "1px solid #dce8e1",
+    borderRadius: "14px",
+    backgroundColor: "#f4f8f6",
+    padding: "14px",
+    marginTop: "16px",
+  },
+  optionLabel: {
+    display: "block",
+    color: "#263a32",
+    fontSize: "13px",
+    fontWeight: 900,
+    marginBottom: "8px",
+  },
+  optionSelect: {
+    width: "100%",
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    padding: "12px 14px",
+    color: "#263a32",
+    backgroundColor: "#ffffff",
+    fontSize: "15px",
+  },
+  colorGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: "10px",
+  },
+  colorOption: {
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    padding: "10px",
+    backgroundColor: "#ffffff",
+    color: "#263a32",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+    fontWeight: 800,
+  },
+  selectedColorOption: {
+    borderColor: "var(--tg-primary)",
+    backgroundColor: "#e5f0ea",
+  },
+  colorSwatch: {
+    width: "24px",
+    height: "24px",
+    borderRadius: "999px",
+    border: "1px solid rgba(0,0,0,0.18)",
+    flex: "0 0 auto",
   },
 };

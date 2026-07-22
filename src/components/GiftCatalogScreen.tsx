@@ -3,6 +3,8 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import GiftDetailScreen from "./GiftDetailScreen";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
+import { getDefaultGiftColor, parseGiftColors, formatGiftColor } from "../utils/giftColors";
+import { formatGiftOption, parseGiftOptions } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -125,21 +127,55 @@ export default function GiftCatalogScreen({
     setCartItems(result.data);
   }
 
-  function getCartItemForGift(giftId: string) {
-    return cartItems.find((item) => item.giftItemId === giftId);
+  function getCartItemsForGift(giftId: string) {
+    return cartItems.filter((item) => item.giftItemId === giftId);
+  }
+
+  function getCartItemForGift(
+    giftId: string,
+    selectedOption?: string,
+    selectedColorId?: string
+  ) {
+    return cartItems.find(
+      (item) =>
+        item.giftItemId === giftId &&
+        (item.selectedOption ?? "") === (selectedOption ?? "") &&
+        (item.selectedColorId ?? "") === (selectedColorId ?? "")
+    );
   }
 
   function getGiftForCartItem(cartItem: CartItem) {
     return giftItems.find((gift) => gift.id === cartItem.giftItemId);
   }
 
-  async function handleAddToCart(gift: GiftItem) {
+  async function handleAddToCart(
+    gift: GiftItem,
+    selectedOption = "",
+    selectedColorId = ""
+  ) {
     if (participant.hasSubmittedOrder) {
       setErrorMessage("Your order has already been submitted and can no longer be changed.");
       return;
     }
 
     const giftCost = gift.pointCost ?? 0;
+    const giftOptions = parseGiftOptions(gift.optionValues);
+    const giftColors = parseGiftColors(gift.colorOptions);
+    const selectedColor =
+      giftColors.find((color) => color.id === selectedColorId) ||
+      getDefaultGiftColor(giftColors);
+
+    if (giftOptions.length > 0 && !selectedOption) {
+      setSelectedGift(gift);
+      setErrorMessage(`Please choose ${gift.optionLabel || "an option"} for ${gift.title}.`);
+      return;
+    }
+
+    if (giftColors.length > 0 && !selectedColor) {
+      setSelectedGift(gift);
+      setErrorMessage(`Please choose a color for ${gift.title}.`);
+      return;
+    }
 
     if (!allowOverPoints && giftCost > remainingPoints) {
       setErrorMessage(
@@ -152,7 +188,11 @@ export default function GiftCatalogScreen({
       setIsCartUpdating(true);
       setErrorMessage("");
 
-      const existingCartItem = getCartItemForGift(gift.id);
+      const existingCartItem = getCartItemForGift(
+        gift.id,
+        selectedOption,
+        selectedColor?.id ?? ""
+      );
 
       if (existingCartItem) {
         const currentQuantity = existingCartItem.quantity ?? 0;
@@ -168,6 +208,11 @@ export default function GiftCatalogScreen({
           giftItemId: gift.id,
           quantity: 1,
           pointCostAtTime: giftCost,
+          selectedOption: selectedOption || null,
+          selectedOptionLabel: selectedOption ? gift.optionLabel || "Option" : null,
+          selectedColorId: selectedColor?.id || null,
+          selectedColorName: selectedColor?.name || null,
+          selectedColorHex: selectedColor?.hex || null,
         });
       }
 
@@ -206,8 +251,16 @@ export default function GiftCatalogScreen({
         if (!a.isPrimary && b.isPrimary) return 1;
         return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
       });
+      const defaultColor = getDefaultGiftColor(parseGiftColors(gift.colorOptions));
+      const defaultColorImages = defaultColor
+        ? sortedImages.filter(
+            (image) =>
+              image.colorOptionId === defaultColor.id ||
+              defaultColor.imageIds.includes(image.id)
+          )
+        : [];
 
-      const primaryImage = sortedImages[0];
+      const primaryImage = defaultColorImages[0] || sortedImages[0];
 
       if (!primaryImage) {
         return [gift.id, gift.imageUrl || ""] as const;
@@ -287,8 +340,10 @@ export default function GiftCatalogScreen({
   }
 
   if (selectedGift) {
-  const cartItem = getCartItemForGift(selectedGift.id);
-  const quantityInCart = cartItem?.quantity ?? 0;
+  const quantityInCart = getCartItemsForGift(selectedGift.id).reduce(
+    (total, item) => total + (item.quantity ?? 0),
+    0
+  );
 
   return (
       <GiftDetailScreen
@@ -313,8 +368,8 @@ export default function GiftCatalogScreen({
           <h1 style={styles.title}>{tournament.name}</h1>
 
           <p style={styles.subtitle}>
-            Welcome, {participant.firstName}. Select gifts using your available
-            points.
+            Welcome, {participant.firstName}. Open a gift to choose options and
+            add it to your cart.
           </p>
         </div>
 
@@ -351,11 +406,11 @@ export default function GiftCatalogScreen({
             ) : (
               <div style={styles.grid}>
                 {giftItems.map((gift) => {
-                  const cartItem = getCartItemForGift(gift.id);
-                  const quantityInCart = cartItem?.quantity ?? 0;
-                  const cannotAfford =
-                    !allowOverPoints && (gift.pointCost ?? 0) > remainingPoints;
-
+                  const giftCartItems = getCartItemsForGift(gift.id);
+                  const quantityInCart = giftCartItems.reduce(
+                    (total, item) => total + (item.quantity ?? 0),
+                    0
+                  );
                   return (
                     <article key={gift.id} style={styles.card}>
                         <button
@@ -401,18 +456,10 @@ export default function GiftCatalogScreen({
 
                         <button
                           type="button"
-                          onClick={() => handleAddToCart(gift)}
-                          disabled={
-                            isCartUpdating ||
-                            participant.hasSubmittedOrder === true ||
-                            cannotAfford
-                          }
-                          style={{
-                            ...styles.addButton,
-                            ...(cannotAfford ? styles.disabledButton : {}),
-                          }}
+                          onClick={() => setSelectedGift(gift)}
+                          style={styles.viewDetailsButton}
                         >
-                          {cannotAfford ? "Not Enough Points" : "Add to Cart"}
+                          View Details
                         </button>
                       </div>
                     </article>
@@ -459,6 +506,19 @@ export default function GiftCatalogScreen({
                         <p style={styles.cartItemDetails}>
                           Qty: {cartItem.quantity} × {cartItem.pointCostAtTime} pts
                         </p>
+                        {cartItem.selectedOption && (
+                          <p style={styles.cartItemDetails}>
+                            {formatGiftOption(
+                              cartItem.selectedOptionLabel || gift?.optionLabel,
+                              cartItem.selectedOption
+                            )}
+                          </p>
+                        )}
+                        {cartItem.selectedColorName && (
+                          <p style={styles.cartItemDetails}>
+                            {formatGiftColor(cartItem.selectedColorName)}
+                          </p>
+                        )}
                       </div>
 
                       <div style={styles.cartActions}>
@@ -524,7 +584,7 @@ const styles: Record<string, React.CSSProperties> = {
   backButton: {
     border: "none",
     background: "transparent",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 700,
     cursor: "pointer",
     padding: 0,
@@ -535,7 +595,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: "clamp(28px, 8vw, 34px)",
     lineHeight: 1.1,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
   },
   subtitle: {
     color: "#5f6f68",
@@ -564,7 +624,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   pointsValue: {
     margin: "8px 0 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "clamp(34px, 10vw, 42px)",
     fontWeight: 800,
   },
@@ -637,13 +697,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   giftTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "clamp(18px, 5.5vw, 20px)",
     lineHeight: 1.2,
   },
   pointBadge: {
     backgroundColor: "#e5f0ea",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     borderRadius: "999px",
     padding: "6px 10px",
     fontWeight: 800,
@@ -663,7 +723,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: "8px",
   },
   inCart: {
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "14px",
     fontWeight: 800,
     marginTop: "8px",
@@ -676,7 +736,19 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     fontWeight: 800,
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
+    cursor: "pointer",
+    marginTop: "18px",
+  },
+  viewDetailsButton: {
+    width: "100%",
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    padding: "13px 16px",
+    fontSize: "15px",
+    fontWeight: 800,
+    color: "var(--tg-primary)",
+    backgroundColor: "#ffffff",
     cursor: "pointer",
     marginTop: "18px",
   },
@@ -696,7 +768,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cartTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "24px",
   },
   cartSummary: {
@@ -732,7 +804,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cartItemTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 800,
     fontSize: "15px",
   },
@@ -751,7 +823,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #ccd8d1",
     borderRadius: "10px",
     backgroundColor: "#ffffff",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 800,
     cursor: "pointer",
     padding: "8px 12px",
@@ -773,7 +845,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
     fontWeight: 800,
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     cursor: "pointer",
     marginTop: "18px",
   },
@@ -798,7 +870,7 @@ giftTitleButton: {
   background: "transparent",
   padding: 0,
   margin: 0,
-  color: "#123c2c",
+  color: "var(--tg-primary)",
   fontSize: "clamp(18px, 5.5vw, 20px)",
   lineHeight: 1.2,
   fontWeight: 800,

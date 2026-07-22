@@ -6,6 +6,20 @@ import {
   removeGiftImage,
   uploadGiftImage,
 } from "../utils/giftImageStorage";
+import {
+  createGiftColorOption,
+  formatGiftColor,
+  getDefaultGiftColor,
+  normalizeGiftColors,
+  parseGiftColors,
+  serializeGiftColors,
+  type GiftColorOption,
+} from "../utils/giftColors";
+import {
+  formatGiftOption,
+  parseGiftOptions,
+  serializeGiftOptions,
+} from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -84,6 +98,27 @@ type ButtonIconName =
   | "upload"
   | "x";
 
+const commonColorHexByName: Record<string, string> = {
+  black: "#000000",
+  white: "#ffffff",
+  gray: "#808080",
+  grey: "#808080",
+  silver: "#c0c0c0",
+  red: "#dc2626",
+  maroon: "#7f1d1d",
+  orange: "#f97316",
+  gold: "#d4af37",
+  yellow: "#facc15",
+  green: "#16a34a",
+  lime: "#84cc16",
+  blue: "#2563eb",
+  navy: "#1e3a8a",
+  purple: "#9333ea",
+  pink: "#ec4899",
+  brown: "#92400e",
+  tan: "#d2b48c",
+};
+
 export default function AdminDevScreen() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -132,10 +167,18 @@ export default function AdminDevScreen() {
   const [csvErrors, setCsvErrors] = useState<string[]>([]);
 
   const [giftImages, setGiftImages] = useState<GiftImage[]>([]);
-  const [selectedGiftForImages, setSelectedGiftForImages] = useState<GiftItem | null>(null);
   const [selectedGiftImageUrls, setSelectedGiftImageUrls] = useState<Record<string, string>>({});
   const [imageUploadFiles, setImageUploadFiles] = useState<FileList | null>(null);
   const [newGiftImageFiles, setNewGiftImageFiles] = useState<FileList | null>(null);
+  const [newGiftPrimaryImageIndex, setNewGiftPrimaryImageIndex] = useState(0);
+  const [editGiftImages, setEditGiftImages] = useState<GiftImage[]>([]);
+  const [editGiftPrimaryImageId, setEditGiftPrimaryImageId] = useState("");
+  const [draggedGiftImageId, setDraggedGiftImageId] = useState("");
+  const [dragOverGiftImageId, setDragOverGiftImageId] = useState("");
+  const [previewGiftImage, setPreviewGiftImage] = useState<{
+    url: string;
+    alt: string;
+  } | null>(null);
   const [giftCardImageUrlsByGiftId, setGiftCardImageUrlsByGiftId] =
   useState<Record<string, string>>({});
   const [selectedGiftForEdit, setSelectedGiftForEdit] = useState<GiftItem | null>(null);
@@ -145,6 +188,11 @@ export default function AdminDevScreen() {
     description: "",
     pointCost: "",
     sortOrder: "",
+    hasOptions: false,
+    optionLabel: "",
+    optionValues: [""],
+    hasColors: false,
+    colorOptions: [createGiftColorOption({ isDefault: true })],
     isActive: true,
     });
 
@@ -182,6 +230,11 @@ export default function AdminDevScreen() {
     imageUrl: "",
     pointCost: "",
     sortOrder: "",
+    hasOptions: false,
+    optionLabel: "",
+    optionValues: [""],
+    hasColors: false,
+    colorOptions: [createGiftColorOption({ isDefault: true })],
     isActive: true,
   });
 
@@ -588,29 +641,155 @@ export default function AdminDevScreen() {
   function openAddGiftModal() {
     setMessage("");
     if (selectedTournamentId) {
+      const nextSortOrder = getNextGiftSortOrder(selectedTournamentId);
       setNewGift((current) => ({
         ...current,
         tournamentId: selectedTournamentId,
+        sortOrder: String(nextSortOrder),
       }));
     }
+    setNewGiftPrimaryImageIndex(0);
     setIsAddGiftOpen(true);
   }
 
-  function openEditGiftModal(gift: GiftItem) {
+  async function openEditGiftModal(gift: GiftItem) {
   setMessage("");
 
   setSelectedGiftForEdit(gift);
+
+  const currentSortPosition =
+    getOrderedTournamentGifts(gift.tournamentId).findIndex(
+      (item) => item.id === gift.id
+    ) + 1;
+
+  const colorOptions = parseGiftColors(gift.colorOptions);
 
   setEditGift({
     title: gift.title ?? "",
     description: gift.description ?? "",
     pointCost: String(gift.pointCost ?? ""),
     sortOrder: gift.sortOrder === null || gift.sortOrder === undefined
-      ? ""
+      ? String(Math.max(currentSortPosition, 1))
       : String(gift.sortOrder),
+    hasOptions: parseGiftOptions(gift.optionValues).length > 0,
+    optionLabel: gift.optionLabel ?? "",
+    optionValues: parseGiftOptions(gift.optionValues).length > 0
+      ? parseGiftOptions(gift.optionValues)
+      : [""],
+    hasColors: colorOptions.length > 0,
+    colorOptions: colorOptions.length > 0
+      ? colorOptions
+      : [createGiftColorOption({ isDefault: true })],
     isActive: gift.isActive ?? true,
   });
+
+  const images = giftImages
+    .filter((image) => image.giftItemId === gift.id)
+    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+  setEditGiftImages(images);
+  setEditGiftPrimaryImageId(
+    images.find((image) => image.isPrimary)?.id ?? images[0]?.id ?? ""
+  );
+
+  const missingUrls = images.filter((image) => !selectedGiftImageUrls[image.id]);
+  if (missingUrls.length > 0) {
+    const urlEntries = await Promise.all(
+      missingUrls.map(async (image) => {
+        const url = await getGiftImageUrl(image.imageKey);
+        return [image.id, url] as const;
+      })
+    );
+
+    setSelectedGiftImageUrls((current) => ({
+      ...current,
+      ...Object.fromEntries(urlEntries),
+    }));
+  }
 }
+
+  function getOrderedTournamentGifts(tournamentId: string) {
+    return giftItems
+      .filter((gift) => gift.tournamentId === tournamentId)
+      .sort((a, b) => {
+        const aSort = a.sortOrder ?? 9999;
+        const bSort = b.sortOrder ?? 9999;
+
+        if (aSort !== bSort) return aSort - bSort;
+        return a.title.localeCompare(b.title);
+      });
+  }
+
+  function getNextGiftSortOrder(tournamentId: string) {
+    return getOrderedTournamentGifts(tournamentId).length + 1;
+  }
+
+  function normalizeSortOrder(value: string, maxPosition: number) {
+    const numericValue = Number(value);
+
+    if (!value.trim() || Number.isNaN(numericValue)) {
+      return maxPosition;
+    }
+
+    return Math.min(Math.max(Math.round(numericValue), 1), maxPosition);
+  }
+
+  async function insertGiftSortOrderBeforeCreate(
+    tournamentId: string,
+    desiredPosition: number
+  ) {
+    const orderedGifts = getOrderedTournamentGifts(tournamentId);
+    const clampedPosition = Math.min(
+      Math.max(desiredPosition, 1),
+      orderedGifts.length + 1
+    );
+
+    await Promise.all(
+      orderedGifts
+        .map((gift, index) => ({ gift, currentPosition: index + 1 }))
+        .filter(({ currentPosition }) => currentPosition >= clampedPosition)
+        .map(({ gift, currentPosition }) =>
+          client.models.GiftItem.update({
+            id: gift.id,
+            sortOrder: (gift.sortOrder ?? currentPosition) + 1,
+          })
+        )
+    );
+
+    return clampedPosition;
+  }
+
+  async function reorderGiftItemsAfterEdit(
+    gift: GiftItem,
+    desiredPosition: number
+  ) {
+    const orderedGifts = getOrderedTournamentGifts(gift.tournamentId).filter(
+      (item) => item.id !== gift.id
+    );
+    const clampedPosition = Math.min(
+      Math.max(desiredPosition, 1),
+      orderedGifts.length + 1
+    );
+    const reorderedGifts = [...orderedGifts];
+
+    reorderedGifts.splice(clampedPosition - 1, 0, gift);
+
+    await Promise.all(
+      reorderedGifts.map((item, index) => {
+        const nextSortOrder = index + 1;
+
+        if (item.id === gift.id || item.sortOrder === nextSortOrder) {
+          return Promise.resolve();
+        }
+
+        return client.models.GiftItem.update({
+          id: item.id,
+          sortOrder: nextSortOrder,
+        });
+      })
+    );
+
+    return clampedPosition;
+  }
 
 async function addTournament(event: React.FormEvent<HTMLFormElement>) {
   event.preventDefault();
@@ -753,11 +932,29 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
   const title = editGift.title.trim();
   const description = editGift.description.trim();
   const pointCost = Number(editGift.pointCost);
-  const sortOrder =
-    editGift.sortOrder.trim() === "" ? undefined : Number(editGift.sortOrder);
+  const sortOrder = normalizeSortOrder(
+    editGift.sortOrder,
+    getOrderedTournamentGifts(selectedGiftForEdit.tournamentId).length
+  );
+  const optionValues = editGift.hasOptions
+    ? normalizeGiftOptionValues(editGift.optionValues)
+    : [];
+  const colorOptions = editGift.hasColors
+    ? normalizeGiftColors(editGift.colorOptions)
+    : [];
 
   if (!title || Number.isNaN(pointCost)) {
     setMessage("Please enter a gift title and valid point cost.");
+    return;
+  }
+
+  if (editGift.hasOptions && optionValues.length === 0) {
+    setMessage("Please add at least one option value for this gift.");
+    return;
+  }
+
+  if (editGift.hasColors && colorOptions.length === 0) {
+    setMessage("Please add at least one color option for this gift.");
     return;
   }
 
@@ -765,19 +962,46 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
     setIsWorking(true);
     setMessage("");
 
+    const nextSortOrder = await reorderGiftItemsAfterEdit(
+      selectedGiftForEdit,
+      sortOrder
+    );
+
     await client.models.GiftItem.update({
       id: selectedGiftForEdit.id,
       title,
       description,
       pointCost,
-      sortOrder:
-        sortOrder === undefined || Number.isNaN(sortOrder)
-          ? undefined
-          : sortOrder,
+      sortOrder: nextSortOrder,
+      optionLabel: editGift.hasOptions ? editGift.optionLabel.trim() || "Option" : null,
+      optionValues: editGift.hasOptions ? serializeGiftOptions(optionValues) : null,
+      colorOptions: editGift.hasColors ? serializeGiftColors(colorOptions) : null,
       isActive: editGift.isActive,
     });
 
+    const selectedGiftImages = editGiftImages.length
+      ? editGiftImages
+      : giftImages.filter((image) => image.giftItemId === selectedGiftForEdit.id);
+
+    if (editGiftPrimaryImageId) {
+      await Promise.all(
+        selectedGiftImages.map((image, index) =>
+          client.models.GiftImage.update({
+            id: image.id,
+            sortOrder: index + 1,
+            isPrimary: image.id === editGiftPrimaryImageId,
+            colorOptionId:
+              colorOptions.find((color) => color.imageIds.includes(image.id))?.id ?? null,
+          })
+        )
+      );
+    }
+
     setSelectedGiftForEdit(null);
+    setEditGiftImages([]);
+    setEditGiftPrimaryImageId("");
+    setDraggedGiftImageId("");
+    setDragOverGiftImageId("");
     setMessage("Gift item updated.");
     await loadAdminData();
   } catch (error) {
@@ -855,26 +1079,10 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
     }
   }
 
-  async function openGiftImagesModal(gift: GiftItem) {
-  setSelectedGiftForImages(gift);
-  setImageUploadFiles(null);
-
-  const images = giftImages
-    .filter((image) => image.giftItemId === gift.id)
-    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
-
-  const urlEntries = await Promise.all(
-    images.map(async (image) => {
-      const url = await getGiftImageUrl(image.imageKey);
-      return [image.id, url] as const;
-    })
-  );
-
-  setSelectedGiftImageUrls(Object.fromEntries(urlEntries));
-}
-
 async function uploadImagesForSelectedGift() {
-  if (!selectedGiftForImages || !imageUploadFiles || imageUploadFiles.length === 0) {
+  const giftForImages = selectedGiftForEdit;
+
+  if (!giftForImages || !imageUploadFiles || imageUploadFiles.length === 0) {
     setMessage("Please choose one or more image files.");
     return;
   }
@@ -884,7 +1092,7 @@ async function uploadImagesForSelectedGift() {
     setMessage("");
 
     const existingImages = giftImages.filter(
-      (image) => image.giftItemId === selectedGiftForImages.id
+      (image) => image.giftItemId === giftForImages.id
     );
 
     const files = Array.from(imageUploadFiles);
@@ -893,16 +1101,16 @@ async function uploadImagesForSelectedGift() {
       const file = files[index];
 
       const imageKey = await uploadGiftImage({
-        tournamentId: selectedGiftForImages.tournamentId,
-        giftItemId: selectedGiftForImages.id,
+        tournamentId: giftForImages.tournamentId,
+        giftItemId: giftForImages.id,
         file,
       });
 
       await client.models.GiftImage.create({
-        tournamentId: selectedGiftForImages.tournamentId,
-        giftItemId: selectedGiftForImages.id,
+        tournamentId: giftForImages.tournamentId,
+        giftItemId: giftForImages.id,
         imageKey,
-        altText: selectedGiftForImages.title,
+        altText: giftForImages.title,
         sortOrder: existingImages.length + index + 1,
         isPrimary: existingImages.length === 0 && index === 0,
       });
@@ -910,7 +1118,7 @@ async function uploadImagesForSelectedGift() {
 
     setMessage("Image upload complete.");
     setImageUploadFiles(null);
-    await refreshSelectedGiftImages(selectedGiftForImages);
+    await refreshSelectedGiftImages(giftForImages);
     await loadAdminData();
   } catch (error) {
     console.error("Upload gift images error:", error);
@@ -918,6 +1126,28 @@ async function uploadImagesForSelectedGift() {
   } finally {
     setIsWorking(false);
   }
+}
+
+function reorderGiftImages(draggedImageId: string, targetImageId: string) {
+  if (draggedImageId === targetImageId) return;
+
+  const orderedImages = editGiftImages;
+
+  const draggedIndex = orderedImages.findIndex(
+    (image) => image.id === draggedImageId
+  );
+  const targetIndex = orderedImages.findIndex((image) => image.id === targetImageId);
+
+  if (draggedIndex < 0 || targetIndex < 0) return;
+
+  const reorderedImages = [...orderedImages];
+  const [draggedImage] = reorderedImages.splice(draggedIndex, 1);
+  reorderedImages.splice(targetIndex, 0, draggedImage);
+
+  setEditGiftImages(reorderedImages);
+  setEditGiftPrimaryImageId(reorderedImages[0]?.id ?? "");
+  setDraggedGiftImageId("");
+  setDragOverGiftImageId("");
 }
 
 async function deleteGiftImage(image: GiftImage) {
@@ -932,9 +1162,34 @@ async function deleteGiftImage(image: GiftImage) {
     await removeGiftImage(image.imageKey);
     await client.models.GiftImage.delete({ id: image.id });
 
+    if (image.isPrimary) {
+      const remainingImages = giftImages
+        .filter(
+          (giftImage) =>
+            giftImage.giftItemId === image.giftItemId && giftImage.id !== image.id
+        )
+        .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+
+      const nextPrimaryImage = remainingImages[0];
+
+      if (nextPrimaryImage) {
+        await client.models.GiftImage.update({
+          id: nextPrimaryImage.id,
+          isPrimary: true,
+        });
+      }
+    }
+
     setMessage("Image deleted.");
-    if (selectedGiftForImages) {
-    await refreshSelectedGiftImages(selectedGiftForImages);
+    setEditGift((current) => ({
+      ...current,
+      colorOptions: current.colorOptions.map((color) => ({
+        ...color,
+        imageIds: color.imageIds.filter((id) => id !== image.id),
+      })),
+    }));
+    if (selectedGiftForEdit) {
+    await refreshSelectedGiftImages(selectedGiftForEdit);
     }
 
     await loadAdminData();
@@ -1234,7 +1489,13 @@ async function deleteGiftImage(image: GiftImage) {
           .map((item) => {
             const lineTotal =
               (item.quantity ?? 0) * (item.pointCostAtTime ?? 0);
-            return `${item.titleAtTime} (Qty: ${item.quantity}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
+            const optionText = item.selectedOptionAtTime
+              ? `, ${formatGiftOption(item.selectedOptionLabelAtTime, item.selectedOptionAtTime)}`
+              : "";
+            const colorText = item.selectedColorNameAtTime
+              ? `, ${formatGiftColor(item.selectedColorNameAtTime)}`
+              : "";
+            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
           })
           .join(" | "),
       };
@@ -1411,6 +1672,16 @@ async function deleteGiftImage(image: GiftImage) {
               ${
                 item.descriptionAtTime
                   ? `<span>${escapeHtml(item.descriptionAtTime)}</span>`
+                  : ""
+              }
+              ${
+                item.selectedOptionAtTime
+                  ? `<span>${escapeHtml(formatGiftOption(item.selectedOptionLabelAtTime, item.selectedOptionAtTime))}</span>`
+                  : ""
+              }
+              ${
+                item.selectedColorNameAtTime
+                  ? `<span>${escapeHtml(formatGiftColor(item.selectedColorNameAtTime))}</span>`
                   : ""
               }
             </td>
@@ -1666,6 +1937,11 @@ async function deleteGiftImage(image: GiftImage) {
         description: gift?.description || "",
         quantity: cartItem.quantity ?? 0,
         pointCost: cartItem.pointCostAtTime ?? 0,
+        selectedOption: cartItem.selectedOption ?? "",
+        selectedOptionLabel: cartItem.selectedOptionLabel ?? gift?.optionLabel ?? "",
+        selectedColorId: cartItem.selectedColorId ?? "",
+        selectedColorName: cartItem.selectedColorName ?? "",
+        selectedColorHex: cartItem.selectedColorHex ?? "",
       };
     });
 
@@ -1711,6 +1987,11 @@ async function deleteGiftImage(image: GiftImage) {
           titleAtTime: row.title,
           descriptionAtTime: row.description,
           pointCostAtTime: row.pointCost,
+          selectedOptionAtTime: row.selectedOption || null,
+          selectedOptionLabelAtTime: row.selectedOptionLabel || null,
+          selectedColorIdAtTime: row.selectedColorId || null,
+          selectedColorNameAtTime: row.selectedColorName || null,
+          selectedColorHexAtTime: row.selectedColorHex || null,
           quantity: row.quantity,
         });
       }
@@ -1835,11 +2116,29 @@ async function deleteGiftImage(image: GiftImage) {
 
   const title = newGift.title.trim();
   const pointCost = Number(newGift.pointCost);
-  const sortOrder =
-    newGift.sortOrder.trim() === "" ? undefined : Number(newGift.sortOrder);
+  const sortOrder = normalizeSortOrder(
+    newGift.sortOrder,
+    getOrderedTournamentGifts(newGift.tournamentId).length + 1
+  );
+  const optionValues = newGift.hasOptions
+    ? normalizeGiftOptionValues(newGift.optionValues)
+    : [];
+  const colorOptions = newGift.hasColors
+    ? normalizeGiftColors(newGift.colorOptions)
+    : [];
 
   if (!newGift.tournamentId || !title || Number.isNaN(pointCost)) {
     setMessage("Please enter at least tournament, gift title, and point cost.");
+    return;
+  }
+
+  if (newGift.hasOptions && optionValues.length === 0) {
+    setMessage("Please add at least one option value for this gift.");
+    return;
+  }
+
+  if (newGift.hasColors && colorOptions.length === 0) {
+    setMessage("Please add at least one color option for this gift.");
     return;
   }
 
@@ -1847,15 +2146,20 @@ async function deleteGiftImage(image: GiftImage) {
     setIsWorking(true);
     setMessage("");
 
+    const nextSortOrder = await insertGiftSortOrderBeforeCreate(
+      newGift.tournamentId,
+      sortOrder
+    );
+
     const giftResult = await client.models.GiftItem.create({
       tournamentId: newGift.tournamentId,
       title,
       description: newGift.description.trim(),
       pointCost,
-      sortOrder:
-        sortOrder === undefined || Number.isNaN(sortOrder)
-          ? undefined
-          : sortOrder,
+      sortOrder: nextSortOrder,
+      optionLabel: newGift.hasOptions ? newGift.optionLabel.trim() || "Option" : null,
+      optionValues: newGift.hasOptions ? serializeGiftOptions(optionValues) : null,
+      colorOptions: newGift.hasColors ? serializeGiftColors(colorOptions) : null,
       isActive: newGift.isActive,
     });
 
@@ -1883,7 +2187,7 @@ async function deleteGiftImage(image: GiftImage) {
           imageKey,
           altText: createdGift.title,
           sortOrder: index + 1,
-          isPrimary: index === 0,
+          isPrimary: index === newGiftPrimaryImageIndex,
         });
       }
     }
@@ -1894,10 +2198,16 @@ async function deleteGiftImage(image: GiftImage) {
       description: "",
       pointCost: "",
       sortOrder: "",
+      hasOptions: false,
+      optionLabel: "",
+      optionValues: [""],
+      hasColors: false,
+      colorOptions: [createGiftColorOption({ isDefault: true })],
       isActive: true,
     }));
 
     setNewGiftImageFiles(null);
+    setNewGiftPrimaryImageIndex(0);
     setIsAddGiftOpen(false);
     setMessage("Gift item added.");
     await loadAdminData();
@@ -1918,11 +2228,9 @@ async function refreshSelectedGiftImages(gift: GiftItem) {
     },
   });
 
-  const sortedImages = [...imageResult.data].sort((a, b) => {
-    if (a.isPrimary && !b.isPrimary) return -1;
-    if (!a.isPrimary && b.isPrimary) return 1;
-    return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
-  });
+  const sortedImages = [...imageResult.data].sort(
+    (a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
+  );
 
   const urlEntries = await Promise.all(
     sortedImages.map(async (image) => {
@@ -1937,6 +2245,13 @@ async function refreshSelectedGiftImages(gift: GiftItem) {
   });
 
   setSelectedGiftImageUrls(Object.fromEntries(urlEntries));
+
+  if (selectedGiftForEdit?.id === gift.id) {
+    setEditGiftImages(sortedImages);
+    setEditGiftPrimaryImageId(
+      sortedImages.find((image) => image.isPrimary)?.id ?? sortedImages[0]?.id ?? ""
+    );
+  }
 }
 
 async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
@@ -1957,8 +2272,16 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
         if (!a.isPrimary && b.isPrimary) return 1;
         return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
       });
+      const defaultColor = getDefaultGiftColor(parseGiftColors(gift.colorOptions));
+      const defaultColorImages = defaultColor
+        ? sortedImages.filter(
+            (image) =>
+              image.colorOptionId === defaultColor.id ||
+              defaultColor.imageIds.includes(image.id)
+          )
+        : [];
 
-      const primaryImage = sortedImages[0];
+      const primaryImage = defaultColorImages[0] || sortedImages[0];
 
       if (!primaryImage) {
         return [gift.id, ""] as const;
@@ -1990,7 +2313,7 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
         : `Remove ${gift.title}? This will delete the gift and any cart items using it.`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) return false;
 
     try {
       setIsWorking(true);
@@ -2013,12 +2336,100 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
       }
 
       await loadAdminData();
+      return true;
     } catch (error) {
       console.error("Remove gift error:", error);
       setMessage("Error removing gift item. Check the browser console.");
+      return false;
     } finally {
       setIsWorking(false);
     }
+  }
+
+  function normalizeGiftOptionValues(values: string[]) {
+    return values.map((value) => value.trim()).filter((value) => value.length > 0);
+  }
+
+  function updateOptionValue(
+    values: string[],
+    index: number,
+    nextValue: string
+  ) {
+    return values.map((value, valueIndex) =>
+      valueIndex === index ? nextValue : value
+    );
+  }
+
+  function getColorNameHex(name: string) {
+    return commonColorHexByName[name.trim().toLowerCase()];
+  }
+
+  function updateColorName(
+    colors: GiftColorOption[],
+    colorId: string,
+    name: string
+  ) {
+    const matchingHex = getColorNameHex(name);
+
+    return updateColorOption(colors, colorId, {
+      name,
+      ...(matchingHex ? { hex: matchingHex } : {}),
+    });
+  }
+
+  function updateColorOption(
+    colors: GiftColorOption[],
+    colorId: string,
+    updates: Partial<GiftColorOption>
+  ) {
+    return colors.map((color) =>
+      color.id === colorId ? { ...color, ...updates } : color
+    );
+  }
+
+  function setDefaultColor(colors: GiftColorOption[], colorId: string) {
+    return colors.map((color) => ({
+      ...color,
+      isDefault: color.id === colorId,
+    }));
+  }
+
+  function toggleImageColorLink(
+    colors: GiftColorOption[],
+    colorId: string,
+    imageId: string
+  ) {
+    return colors.map((color) => {
+      const withoutImage = color.imageIds.filter((id) => id !== imageId);
+
+      if (color.id !== colorId) {
+        return {
+          ...color,
+          imageIds: withoutImage,
+        };
+      }
+
+      return {
+        ...color,
+        imageIds: color.imageIds.includes(imageId)
+          ? withoutImage
+          : [...withoutImage, imageId],
+      };
+    });
+  }
+
+  function removeColorOption(colors: GiftColorOption[], colorId: string) {
+    const nextColors = colors.filter((color) => color.id !== colorId);
+
+    if (nextColors.length === 0) {
+      return [createGiftColorOption({ isDefault: true })];
+    }
+
+    if (!nextColors.some((color) => color.isDefault)) {
+      return setDefaultColor(nextColors, nextColors[0].id);
+    }
+
+    return nextColors;
   }
 
   async function toggleGiftActive(gift: GiftItem) {
@@ -2583,15 +2994,6 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
 
                         <button
                             type="button"
-                            onClick={() => openGiftImagesModal(gift)}
-                            disabled={isWorking}
-                            style={styles.smallNeutralButton}
-                        >
-                            <ButtonContent icon="image" label="Images" />
-                        </button>
-
-                        <button
-                            type="button"
                             onClick={() => toggleGiftActive(gift)}
                             disabled={isWorking}
                             style={styles.smallButton}
@@ -2928,74 +3330,18 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
         </Modal>
       )}
 
-      {selectedGiftForImages && (
-        <Modal
-            title={`Images: ${selectedGiftForImages.title}`}
-            onClose={() => {
-            setSelectedGiftForImages(null);
-            setSelectedGiftImageUrls({});
-            setImageUploadFiles(null);
-            }}
-        >
-            <div style={styles.modalForm}>
-            <p style={styles.muted}>
-                Upload one or more images for this gift. The first uploaded image will be used as the primary image if no images exist yet.
-            </p>
-
-            <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(event) => setImageUploadFiles(event.target.files)}
-                style={styles.input}
-            />
-
-            <button
-                type="button"
-                onClick={uploadImagesForSelectedGift}
-                disabled={isWorking || !imageUploadFiles || imageUploadFiles.length === 0}
-                style={styles.primaryButton}
-            >
-                <ButtonContent icon="upload" label="Upload Images" />
-            </button>
-
-            <div style={styles.imageManageGrid}>
-                {giftImages
-                .filter((image) => image.giftItemId === selectedGiftForImages.id)
-                .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
-                .map((image) => (
-                    <div key={image.id} style={styles.imageManageCard}>
-                    {selectedGiftImageUrls[image.id] && (
-                        <img
-                        src={selectedGiftImageUrls[image.id]}
-                        alt={image.altText || selectedGiftForImages.title}
-                        style={styles.imageManagePreview}
-                        />
-                    )}
-
-                    <p style={styles.muted}>
-                        {image.isPrimary ? "Primary Image" : "Gallery Image"}
-                    </p>
-
-                    <button
-                        type="button"
-                        onClick={() => deleteGiftImage(image)}
-                        disabled={isWorking}
-                        style={styles.smallDangerButton}
-                    >
-                        <ButtonContent icon="trash" label="Delete Image" />
-                    </button>
-                    </div>
-                ))}
-            </div>
-            </div>
-        </Modal>
-        )}
-
         {selectedGiftForEdit && (
         <Modal
             title={`Edit Gift: ${selectedGiftForEdit.title}`}
-            onClose={() => setSelectedGiftForEdit(null)}
+            onClose={() => {
+              setSelectedGiftForEdit(null);
+              setEditGiftImages([]);
+              setSelectedGiftImageUrls({});
+              setImageUploadFiles(null);
+              setEditGiftPrimaryImageId("");
+              setDraggedGiftImageId("");
+              setDragOverGiftImageId("");
+            }}
         >
             <form onSubmit={updateGift} style={styles.modalForm}>
             <FieldLabel label="Gift Title" />
@@ -3039,7 +3385,7 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
             />
 
             <FieldLabel label="Sort Order" />
-            <input
+            <select
                 value={editGift.sortOrder}
                 onChange={(event) =>
                 setEditGift((current) => ({
@@ -3047,12 +3393,222 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                     sortOrder: event.target.value,
                 }))
                 }
-                placeholder="Sort order"
-                type="number"
                 style={styles.input}
-            />
+            >
+                {Array.from(
+                {
+                    length: Math.max(
+                    getOrderedTournamentGifts(selectedGiftForEdit.tournamentId).length,
+                    1
+                    ),
+                },
+                (_, index) => index + 1
+                ).map((position) => (
+                <option key={position} value={position}>
+                    Position {position}
+                </option>
+                ))}
+            </select>
 
-            <label style={styles.checkboxLabel}>
+            <label style={styles.statusCheckboxLabel}>
+                <input
+                type="checkbox"
+                checked={editGift.hasOptions}
+                onChange={(event) =>
+                    setEditGift((current) => ({
+                    ...current,
+                    hasOptions: event.target.checked,
+                    optionValues: current.optionValues.length ? current.optionValues : [""],
+                    }))
+                }
+                style={styles.largeCheckbox}
+                />
+                <span>
+                    <strong style={styles.statusCheckboxTitle}>Gift Options</strong>
+                    <span style={styles.statusCheckboxHint}>
+                    Let participants choose a size, quantity, or custom option
+                    </span>
+                </span>
+            </label>
+
+            {editGift.hasOptions && (
+                <div style={styles.optionEditorBox}>
+                <FieldLabel label="Option Label" />
+                <input
+                    value={editGift.optionLabel}
+                    onChange={(event) =>
+                    setEditGift((current) => ({
+                        ...current,
+                        optionLabel: event.target.value,
+                    }))
+                    }
+                    placeholder="Size, Quantity, or another custom choice..."
+                    style={styles.input}
+                />
+
+                <FieldLabel label="Option Values" />
+                {editGift.optionValues.map((optionValue, index) => (
+                    <div key={index} style={styles.optionRow}>
+                    <input
+                        value={optionValue}
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            optionValues: updateOptionValue(
+                            current.optionValues,
+                            index,
+                            event.target.value
+                            ),
+                        }))
+                        }
+                        placeholder={`Option ${index + 1}`}
+                        style={styles.input}
+                    />
+                    <button
+                        type="button"
+                        onClick={() =>
+                        setEditGift((current) => ({
+                            ...current,
+                            optionValues:
+                            current.optionValues.length <= 1
+                                ? [""]
+                                : current.optionValues.filter((_, valueIndex) => valueIndex !== index),
+                        }))
+                        }
+                        style={styles.smallDangerButton}
+                    >
+                        <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                    </div>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={() =>
+                    setEditGift((current) => ({
+                        ...current,
+                        optionValues: [...current.optionValues, ""],
+                    }))
+                    }
+                    style={styles.secondaryButton}
+                >
+                    <ButtonContent icon="plus" label="Add Option" />
+                </button>
+                </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
+                <input
+                type="checkbox"
+                checked={editGift.hasColors}
+                onChange={(event) =>
+                    setEditGift((current) => ({
+                    ...current,
+                    hasColors: event.target.checked,
+                    colorOptions: current.colorOptions.length
+                        ? current.colorOptions
+                        : [createGiftColorOption({ isDefault: true })],
+                    }))
+                }
+                style={styles.largeCheckbox}
+                />
+                <span>
+                    <strong style={styles.statusCheckboxTitle}>Color Options</strong>
+                    <span style={styles.statusCheckboxHint}>
+                    Let participants choose a color with swatches and color-specific images
+                    </span>
+                </span>
+            </label>
+
+            {editGift.hasColors && (
+                <div style={styles.optionEditorBox}>
+                <FieldLabel label="Colors" />
+                {editGift.colorOptions.map((color, index) => (
+                    <div key={color.id} style={styles.colorEditorRow}>
+                    <input
+                        value={color.name}
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            colorOptions: updateColorName(
+                            current.colorOptions,
+                            color.id,
+                            event.target.value
+                            ),
+                        }))
+                        }
+                        placeholder={`Color ${index + 1}`}
+                        list="gift-color-name-options"
+                        style={styles.input}
+                    />
+                    <input
+                        type="color"
+                        value={color.hex}
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            colorOptions: updateColorOption(
+                            current.colorOptions,
+                            color.id,
+                            { hex: event.target.value }
+                            ),
+                        }))
+                        }
+                        style={styles.colorInput}
+                        aria-label={`${color.name || `Color ${index + 1}`} swatch`}
+                    />
+                    <span style={styles.colorValuePill}>{color.hex.toUpperCase()}</span>
+                    <button
+                        type="button"
+                        onClick={() =>
+                        setEditGift((current) => ({
+                            ...current,
+                            colorOptions: setDefaultColor(current.colorOptions, color.id),
+                        }))
+                        }
+                        style={{
+                        ...styles.colorActionButton,
+                        ...(color.isDefault
+                            ? styles.colorDefaultButton
+                            : styles.colorSecondaryButton),
+                        }}
+                    >
+                        {color.isDefault ? "Default" : "Set Default"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() =>
+                        setEditGift((current) => ({
+                            ...current,
+                            colorOptions: removeColorOption(current.colorOptions, color.id),
+                        }))
+                        }
+                        style={{ ...styles.colorActionButton, ...styles.colorRemoveButton }}
+                    >
+                        <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                    </div>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={() =>
+                    setEditGift((current) => ({
+                        ...current,
+                        colorOptions: [
+                        ...current.colorOptions,
+                        createGiftColorOption({ isDefault: current.colorOptions.length === 0 }),
+                        ],
+                    }))
+                    }
+                    style={styles.secondaryButton}
+                >
+                    <ButtonContent icon="plus" label="Add Color" />
+                </button>
+                </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
                 <input
                 type="checkbox"
                 checked={editGift.isActive}
@@ -3062,9 +3618,170 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                     isActive: event.target.checked,
                     }))
                 }
+                style={styles.largeCheckbox}
                 />
-                Active
+                <span>
+                    <strong style={styles.statusCheckboxTitle}>Active Gift Item</strong>
+                    <span style={styles.statusCheckboxHint}>
+                    Visible to participants in the gift catalog
+                    </span>
+                </span>
             </label>
+
+            <div style={styles.formSectionDivider} />
+
+            <div>
+                <h3 style={styles.modalSectionTitle}>Gift Images</h3>
+                <p style={styles.muted}>
+                Upload images, drag to reorder, choose the primary image, or remove images for this gift. Image order is saved when you save the gift.
+                </p>
+            </div>
+
+            <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => setImageUploadFiles(event.target.files)}
+                style={styles.input}
+            />
+
+            <button
+                type="button"
+                onClick={uploadImagesForSelectedGift}
+                disabled={isWorking || !imageUploadFiles || imageUploadFiles.length === 0}
+                style={styles.primaryButton}
+            >
+                <ButtonContent icon="upload" label="Upload Images" />
+            </button>
+
+            <div style={styles.primaryImagePicker}>
+                {editGiftImages.map((image, index) => (
+                    <div
+                    key={image.id}
+                    draggable={!isWorking}
+                    onClick={() => setEditGiftPrimaryImageId(image.id)}
+                    onDragStart={(event) => {
+                        setDraggedGiftImageId(image.id);
+                        event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverGiftImageId(image.id);
+                        event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragLeave={() => {
+                        if (dragOverGiftImageId === image.id) {
+                        setDragOverGiftImageId("");
+                        }
+                    }}
+                    onDrop={(event) => {
+                        event.preventDefault();
+                        reorderGiftImages(draggedGiftImageId, image.id);
+                    }}
+                    onDragEnd={() => {
+                        setDraggedGiftImageId("");
+                        setDragOverGiftImageId("");
+                    }}
+                    style={{
+                        ...styles.primaryImageOption,
+                        ...(editGiftPrimaryImageId === image.id
+                        ? styles.primaryImageSelectedOption
+                        : {}),
+                        ...(draggedGiftImageId === image.id
+                        ? styles.primaryImageDraggingOption
+                        : {}),
+                        ...(dragOverGiftImageId === image.id &&
+                        draggedGiftImageId !== image.id
+                        ? styles.primaryImageDropTargetOption
+                        : {}),
+                    }}
+                    >
+                        <span style={styles.dragHandle} aria-hidden="true">
+                        ::
+                        </span>
+
+                        {selectedGiftImageUrls[image.id] && (
+                        <img
+                            src={selectedGiftImageUrls[image.id]}
+                            alt={image.altText || editGift.title}
+                            style={styles.primaryImagePreview}
+                        />
+                        )}
+
+                        <span style={styles.primaryImageLabel}>
+                        {index === 0 ? "Primary Image" : `Gallery Image ${index + 1}`}
+                        </span>
+
+                        {editGift.hasColors && editGift.colorOptions.length > 0 && (
+                        <select
+                            value={
+                            editGift.colorOptions.find((color) =>
+                                color.imageIds.includes(image.id)
+                            )?.id ?? ""
+                            }
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) =>
+                            setEditGift((current) => ({
+                                ...current,
+                                colorOptions: event.target.value
+                                ? toggleImageColorLink(
+                                    current.colorOptions,
+                                    event.target.value,
+                                    image.id
+                                    )
+                                : current.colorOptions.map((color) => ({
+                                    ...color,
+                                    imageIds: color.imageIds.filter((id) => id !== image.id),
+                                    })),
+                            }))
+                            }
+                            disabled={isWorking}
+                            style={styles.imageColorSelect}
+                        >
+                            <option value="">All colors</option>
+                            {editGift.colorOptions.map((color) => (
+                            <option key={color.id} value={color.id}>
+                                {color.name || "Unnamed color"}
+                            </option>
+                            ))}
+                        </select>
+                        )}
+
+                        {selectedGiftImageUrls[image.id] && (
+                        <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setPreviewGiftImage({
+                            url: selectedGiftImageUrls[image.id],
+                            alt: image.altText || editGift.title,
+                            });
+                        }}
+                        disabled={isWorking}
+                        style={styles.smallNeutralButton}
+                        >
+                        <ButtonContent icon="eye" label="View" />
+                        </button>
+                        )}
+
+                        <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            deleteGiftImage(image);
+                        }}
+                        disabled={isWorking}
+                        style={styles.smallDangerButton}
+                        >
+                        <ButtonContent icon="trash" label="Delete" />
+                        </button>
+                    </div>
+                ))}
+
+                {editGiftImages.length === 0 && (
+                <p style={styles.muted}>No images uploaded for this gift yet.</p>
+                )}
+            </div>
 
             <div style={styles.modalActions}>
                 <button
@@ -3075,6 +3792,27 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                 <ButtonContent icon="x" label="Cancel" />
                 </button>
 
+                <button
+                type="button"
+                onClick={async () => {
+                    const removed = await removeGift(selectedGiftForEdit);
+
+                    if (removed) {
+                    setSelectedGiftForEdit(null);
+                    setEditGiftImages([]);
+                    setSelectedGiftImageUrls({});
+                    setImageUploadFiles(null);
+                    setEditGiftPrimaryImageId("");
+                    setDraggedGiftImageId("");
+                    setDragOverGiftImageId("");
+                    }
+                }}
+                disabled={isWorking}
+                style={styles.dangerButton}
+                >
+                <ButtonContent icon="trash" label="Remove" />
+                </button>
+
                 <button type="submit" disabled={isWorking} style={styles.primaryButton}>
                 <ButtonContent icon="save" label="Save Changes" />
                 </button>
@@ -3082,6 +3820,18 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
             </form>
         </Modal>
         )}
+
+      {previewGiftImage && (
+        <Modal title="Gift Image Preview" onClose={() => setPreviewGiftImage(null)}>
+          <div style={styles.imagePreviewModalContent}>
+            <img
+              src={previewGiftImage.url}
+              alt={previewGiftImage.alt}
+              style={styles.imagePreviewLarge}
+            />
+          </div>
+        </Modal>
+      )}
 
       {isCsvUploadOpen && (
         <Modal title="Upload Participants CSV" onClose={() => setIsCsvUploadOpen(false)}>
@@ -3239,18 +3989,33 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(event) => setNewGiftImageFiles(event.target.files)}
+                onChange={(event) => {
+                    setNewGiftImageFiles(event.target.files);
+                    setNewGiftPrimaryImageIndex(0);
+                }}
                 style={styles.input}
                 />
 
                 {newGiftImageFiles && newGiftImageFiles.length > 0 && (
-                <p style={styles.muted}>
-                    {newGiftImageFiles.length} image(s) selected. The first image will be used as the primary image.
-                </p>
+                <div style={styles.primaryImagePicker}>
+                    {Array.from(newGiftImageFiles).map((file, index) => (
+                    <label key={`${file.name}-${index}`} style={styles.primaryImageOption}>
+                        <input
+                        type="radio"
+                        name="newGiftPrimaryImage"
+                        checked={newGiftPrimaryImageIndex === index}
+                        onChange={() => setNewGiftPrimaryImageIndex(index)}
+                        />
+                        <span>
+                        {file.name} {newGiftPrimaryImageIndex === index ? "(Primary)" : ""}
+                        </span>
+                    </label>
+                    ))}
+                </div>
                 )}
 
             <FieldLabel label="Sort Order" />
-            <input
+            <select
               value={newGift.sortOrder}
               onChange={(event) =>
                 setNewGift((current) => ({
@@ -3258,10 +4023,220 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                   sortOrder: event.target.value,
                 }))
               }
-              placeholder="Sort order"
-              type="number"
               style={styles.input}
-            />
+            >
+              {Array.from(
+                {
+                  length: Math.max(
+                    getOrderedTournamentGifts(newGift.tournamentId).length + 1,
+                    1
+                  ),
+                },
+                (_, index) => index + 1
+              ).map((position) => (
+                <option key={position} value={position}>
+                  Position {position}
+                </option>
+              ))}
+            </select>
+
+            <label style={styles.statusCheckboxLabel}>
+              <input
+                type="checkbox"
+                checked={newGift.hasOptions}
+                onChange={(event) =>
+                  setNewGift((current) => ({
+                    ...current,
+                    hasOptions: event.target.checked,
+                    optionValues: current.optionValues.length ? current.optionValues : [""],
+                  }))
+                }
+                style={styles.largeCheckbox}
+              />
+              <span>
+                <strong style={styles.statusCheckboxTitle}>Gift Options</strong>
+                <span style={styles.statusCheckboxHint}>
+                  Let participants choose a size, quantity, or custom option
+                </span>
+              </span>
+            </label>
+
+            {newGift.hasOptions && (
+              <div style={styles.optionEditorBox}>
+                <FieldLabel label="Option Label" />
+                <input
+                  value={newGift.optionLabel}
+                  onChange={(event) =>
+                    setNewGift((current) => ({
+                      ...current,
+                      optionLabel: event.target.value,
+                    }))
+                  }
+                  placeholder="Size, Quantity, or another custom choice..."
+                  style={styles.input}
+                />
+
+                <FieldLabel label="Option Values" />
+                {newGift.optionValues.map((optionValue, index) => (
+                  <div key={index} style={styles.optionRow}>
+                    <input
+                      value={optionValue}
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          optionValues: updateOptionValue(
+                            current.optionValues,
+                            index,
+                            event.target.value
+                          ),
+                        }))
+                      }
+                      placeholder={`Option ${index + 1}`}
+                      style={styles.input}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewGift((current) => ({
+                          ...current,
+                          optionValues:
+                            current.optionValues.length <= 1
+                              ? [""]
+                              : current.optionValues.filter((_, valueIndex) => valueIndex !== index),
+                        }))
+                      }
+                      style={styles.smallDangerButton}
+                    >
+                      <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewGift((current) => ({
+                      ...current,
+                      optionValues: [...current.optionValues, ""],
+                    }))
+                  }
+                  style={styles.secondaryButton}
+                >
+                  <ButtonContent icon="plus" label="Add Option" />
+                </button>
+              </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
+              <input
+                type="checkbox"
+                checked={newGift.hasColors}
+                onChange={(event) =>
+                  setNewGift((current) => ({
+                    ...current,
+                    hasColors: event.target.checked,
+                    colorOptions: current.colorOptions.length
+                      ? current.colorOptions
+                      : [createGiftColorOption({ isDefault: true })],
+                  }))
+                }
+                style={styles.largeCheckbox}
+              />
+              <span>
+                <strong style={styles.statusCheckboxTitle}>Color Options</strong>
+                <span style={styles.statusCheckboxHint}>
+                  Let participants choose a color with swatches and color-specific images
+                </span>
+              </span>
+            </label>
+
+            {newGift.hasColors && (
+              <div style={styles.optionEditorBox}>
+                <FieldLabel label="Colors" />
+                {newGift.colorOptions.map((color, index) => (
+                  <div key={color.id} style={styles.colorEditorRow}>
+                    <input
+                      value={color.name}
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          colorOptions: updateColorName(
+                            current.colorOptions,
+                            color.id,
+                            event.target.value
+                          ),
+                        }))
+                      }
+                      placeholder={`Color ${index + 1}`}
+                      list="gift-color-name-options"
+                      style={styles.input}
+                    />
+                    <input
+                      type="color"
+                      value={color.hex}
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          colorOptions: updateColorOption(
+                            current.colorOptions,
+                            color.id,
+                            { hex: event.target.value }
+                          ),
+                        }))
+                      }
+                      style={styles.colorInput}
+                      aria-label={`${color.name || `Color ${index + 1}`} swatch`}
+                    />
+                    <span style={styles.colorValuePill}>{color.hex.toUpperCase()}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewGift((current) => ({
+                          ...current,
+                          colorOptions: setDefaultColor(current.colorOptions, color.id),
+                        }))
+                      }
+                      style={{
+                        ...styles.colorActionButton,
+                        ...(color.isDefault
+                          ? styles.colorDefaultButton
+                          : styles.colorSecondaryButton),
+                      }}
+                    >
+                      {color.isDefault ? "Default" : "Set Default"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewGift((current) => ({
+                          ...current,
+                          colorOptions: removeColorOption(current.colorOptions, color.id),
+                        }))
+                      }
+                      style={{ ...styles.colorActionButton, ...styles.colorRemoveButton }}
+                    >
+                      <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewGift((current) => ({
+                      ...current,
+                      colorOptions: [
+                        ...current.colorOptions,
+                        createGiftColorOption({ isDefault: current.colorOptions.length === 0 }),
+                      ],
+                    }))
+                  }
+                  style={styles.secondaryButton}
+                >
+                  <ButtonContent icon="plus" label="Add Color" />
+                </button>
+              </div>
+            )}
 
             <label style={styles.checkboxLabel}>
               <input
@@ -3289,6 +4264,14 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
           </form>
         </Modal>
       )}
+
+      <datalist id="gift-color-name-options">
+        {Object.keys(commonColorHexByName)
+          .filter((name) => name !== "grey")
+          .map((name) => (
+            <option key={name} value={name.charAt(0).toUpperCase() + name.slice(1)} />
+          ))}
+      </datalist>
     </main>
   );
 }
@@ -3312,7 +4295,7 @@ function Modal({
           </button>
         </div>
 
-        {children}
+        <div style={styles.modalBody}>{children}</div>
       </section>
     </div>
   );
@@ -3526,6 +4509,19 @@ function ParticipantCartAndOrders({
                   <p style={styles.muted}>
                     Qty: {cartItem.quantity} x {cartItem.pointCostAtTime} pts
                   </p>
+                  {cartItem.selectedOption && (
+                    <p style={styles.muted}>
+                      {formatGiftOption(
+                        cartItem.selectedOptionLabel || gift?.optionLabel,
+                        cartItem.selectedOption
+                      )}
+                    </p>
+                  )}
+                  {cartItem.selectedColorName && (
+                    <p style={styles.muted}>
+                      {formatGiftColor(cartItem.selectedColorName)}
+                    </p>
+                  )}
                 </div>
 
                 <strong>{lineTotal} pts</strong>
@@ -3565,7 +4561,15 @@ function ParticipantCartAndOrders({
 
                       return (
                         <div key={item.id} style={styles.participantOrderItem}>
-                          <span>{item.titleAtTime}</span>
+                          <span>
+                            {item.titleAtTime}
+                            {item.selectedOptionAtTime
+                              ? ` (${formatGiftOption(item.selectedOptionLabelAtTime, item.selectedOptionAtTime)})`
+                              : ""}
+                            {item.selectedColorNameAtTime
+                              ? ` (${formatGiftColor(item.selectedColorNameAtTime)})`
+                              : ""}
+                          </span>
                           <span>
                             {item.quantity} x {item.pointCostAtTime} ={" "}
                             {lineTotal} pts
@@ -3652,6 +4656,19 @@ function OrderDetail({
               <div key={item.id} style={styles.orderItemRow}>
                 <div>
                   <p style={styles.orderItemTitle}>{item.titleAtTime}</p>
+                  {item.selectedOptionAtTime && (
+                    <p style={styles.muted}>
+                      {formatGiftOption(
+                        item.selectedOptionLabelAtTime,
+                        item.selectedOptionAtTime
+                      )}
+                    </p>
+                  )}
+                  {item.selectedColorNameAtTime && (
+                    <p style={styles.muted}>
+                      {formatGiftColor(item.selectedColorNameAtTime)}
+                    </p>
+                  )}
                   <p style={styles.muted}>
                     Qty: {item.quantity} × {item.pointCostAtTime} pts
                   </p>
@@ -3695,7 +4712,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     margin: 0,
     fontSize: "34px",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
   },
   subtitle: {
     color: "#5f6f68",
@@ -3708,7 +4725,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #dce8e1",
     borderRadius: "12px",
     padding: "12px 16px",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 700,
   },
   tournamentSelectorCard: {
@@ -3743,7 +4760,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tournamentSelectorTitle: {
     margin: "6px 0 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "26px",
   },
   tournamentTitleSelect: {
@@ -3757,7 +4774,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "28px",
     lineHeight: 1.15,
     backgroundColor: "transparent",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 900,
     cursor: "pointer",
     outline: "none",
@@ -3794,7 +4811,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tournamentMetaValue: {
     display: "block",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "15px",
     lineHeight: 1.2,
   },
@@ -3841,7 +4858,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   statValue: {
     margin: "8px 0 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "34px",
     fontWeight: 900,
   },
@@ -3870,7 +4887,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "24px",
   },
   tableWrapper: {
@@ -3945,12 +4962,112 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#263a32",
     fontWeight: 700,
   },
+  statusCheckboxLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    border: "1px solid #c8dbd0",
+    borderRadius: "14px",
+    backgroundColor: "#f4f8f6",
+    padding: "14px",
+    color: "#263a32",
+    cursor: "pointer",
+  },
+  largeCheckbox: {
+    width: "22px",
+    height: "22px",
+    accentColor: "var(--tg-primary)",
+    flex: "0 0 auto",
+  },
+  statusCheckboxTitle: {
+    display: "block",
+    color: "var(--tg-primary)",
+    fontSize: "15px",
+    lineHeight: 1.2,
+  },
+  statusCheckboxHint: {
+    display: "block",
+    color: "#5f6f68",
+    fontSize: "13px",
+    lineHeight: 1.35,
+    marginTop: "2px",
+  },
+  optionEditorBox: {
+    border: "1px solid #dce8e1",
+    borderRadius: "14px",
+    backgroundColor: "#f7f9f8",
+    padding: "14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  optionRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: "8px",
+    alignItems: "center",
+  },
+  colorEditorRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(150px, 1fr) 54px 92px 118px 110px",
+    gap: "8px",
+    alignItems: "center",
+  },
+  colorInput: {
+    width: "54px",
+    height: "46px",
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    padding: "4px",
+    backgroundColor: "#ffffff",
+    cursor: "pointer",
+  },
+  colorValuePill: {
+    height: "46px",
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    backgroundColor: "#ffffff",
+    color: "#5f6f68",
+    fontSize: "12px",
+    fontWeight: 900,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    letterSpacing: "0.03em",
+  },
+  colorActionButton: {
+    height: "46px",
+    borderRadius: "12px",
+    padding: "0 12px",
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "7px",
+    whiteSpace: "nowrap",
+  },
+  colorDefaultButton: {
+    border: "1px solid var(--tg-primary)",
+    color: "#ffffff",
+    backgroundColor: "var(--tg-primary)",
+  },
+  colorSecondaryButton: {
+    border: "1px solid #cbd5d1",
+    color: "#37423d",
+    backgroundColor: "#f7f9f8",
+  },
+  colorRemoveButton: {
+    border: "1px solid #b42318",
+    color: "#ffffff",
+    backgroundColor: "#b42318",
+  },
   primaryButton: {
     border: "none",
     borderRadius: "12px",
     padding: "12px 18px",
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     fontWeight: 800,
     cursor: "pointer",
     display: "inline-flex",
@@ -3971,12 +5088,25 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     gap: "8px",
   },
+  dangerButton: {
+    border: "none",
+    borderRadius: "12px",
+    padding: "12px 18px",
+    color: "#ffffff",
+    backgroundColor: "#b42318",
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+  },
   smallButton: {
     border: "none",
     borderRadius: "10px",
     padding: "8px 12px",
     color: "#ffffff",
-    backgroundColor: "#123c2c",
+    backgroundColor: "var(--tg-primary)",
     fontWeight: 800,
     cursor: "pointer",
     display: "inline-flex",
@@ -4066,11 +5196,11 @@ giftImagePlaceholder: {
 },
   giftTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "18px",
   },
   giftPoints: {
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 900,
   },
   muted: {
@@ -4087,7 +5217,7 @@ giftImagePlaceholder: {
   },
   orderDetailTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "21px",
   },
   detailGrid: {
@@ -4106,13 +5236,13 @@ giftImagePlaceholder: {
   },
   detailValue: {
     margin: "4px 0 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "15px",
     fontWeight: 800,
   },
   orderItemsTitle: {
     margin: "12px 0",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "18px",
   },
   orderItemsList: {
@@ -4131,7 +5261,7 @@ giftImagePlaceholder: {
   },
   orderItemTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontWeight: 900,
   },
   participantOrderBlock: {
@@ -4165,27 +5295,44 @@ giftImagePlaceholder: {
     zIndex: 1000,
   },
   modalCard: {
+    position: "relative",
     width: "100%",
     maxWidth: "680px",
     maxHeight: "90vh",
-    overflowY: "auto",
+    overflow: "hidden",
     backgroundColor: "#ffffff",
     borderRadius: "22px",
     boxShadow: "0 22px 70px rgba(0, 0, 0, 0.22)",
     border: "1px solid #dce8e1",
-    padding: "24px",
+    display: "flex",
+    flexDirection: "column",
   },
   modalHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "16px",
-    marginBottom: "18px",
+    padding: "24px 24px 18px",
+    flex: "0 0 auto",
+  },
+  modalBody: {
+    overflowY: "auto",
+    padding: "0 24px 0",
   },
   modalTitle: {
     margin: 0,
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontSize: "24px",
+  },
+  modalSectionTitle: {
+    margin: "0 0 6px",
+    color: "var(--tg-primary)",
+    fontSize: "18px",
+  },
+  formSectionDivider: {
+    height: "1px",
+    backgroundColor: "#dce8e1",
+    margin: "4px 0",
   },
   modalCloseButton: {
     border: "none",
@@ -4193,28 +5340,44 @@ giftImagePlaceholder: {
     width: "36px",
     height: "36px",
     backgroundColor: "#f4f8f6",
-    color: "#123c2c",
-    fontSize: "24px",
-    lineHeight: 1,
+    color: "var(--tg-primary)",
+    fontSize: "22px",
+    lineHeight: 0,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    fontFamily: "Arial, sans-serif",
   },
   modalForm: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+    paddingBottom: "78px",
   },
   modalActions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 3,
     display: "flex",
     justifyContent: "flex-end",
     gap: "10px",
-    marginTop: "12px",
+    flexWrap: "wrap",
+    margin: 0,
+    padding: "14px 24px",
+    backgroundColor: "#ffffff",
+    borderTop: "1px solid #dce8e1",
+    boxShadow: "0 -10px 24px rgba(18, 60, 44, 0.08)",
   },
   csvExample: {
     backgroundColor: "#f4f8f6",
     border: "1px solid #dce8e1",
     borderRadius: "12px",
     padding: "12px",
-    color: "#123c2c",
+    color: "var(--tg-primary)",
     fontFamily: "monospace",
     fontSize: "13px",
     lineHeight: 1.5,
@@ -4249,9 +5412,90 @@ imageManageCard: {
 },
 imageManagePreview: {
   width: "100%",
-  height: "130px",
+  aspectRatio: "1 / 1",
   objectFit: "cover",
   borderRadius: "10px",
   backgroundColor: "#edf3ef",
 },
+  primaryImagePicker: {
+    border: "1px solid #dce8e1",
+    borderRadius: "14px",
+    backgroundColor: "#f7f9f8",
+    padding: "12px",
+    display: "grid",
+    gap: "10px",
+  },
+  primaryImageOption: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    borderWidth: "2px",
+    borderStyle: "solid",
+    borderColor: "transparent",
+    borderRadius: "14px",
+    backgroundColor: "#ffffff",
+    padding: "10px",
+    color: "#263a32",
+    fontSize: "14px",
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "none",
+    transition: "transform 140ms ease, border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease",
+  },
+  primaryImageSelectedOption: {
+    borderColor: "var(--tg-primary)",
+    backgroundColor: "#eef5f0",
+    boxShadow: "0 8px 20px rgba(18, 60, 44, 0.12)",
+  },
+  primaryImageDraggingOption: {
+    opacity: 0.55,
+    transform: "scale(0.98)",
+  },
+  primaryImageDropTargetOption: {
+    transform: "translateY(6px)",
+    backgroundColor: "#f4f8f6",
+  },
+  dragHandle: {
+    color: "#8b9a93",
+    fontWeight: 900,
+    cursor: "grab",
+    letterSpacing: "1px",
+    userSelect: "none",
+  },
+  primaryImageLabel: {
+    flex: "1 1 auto",
+  },
+  imageColorSelect: {
+    minWidth: "150px",
+    border: "1px solid #ccd8d1",
+    borderRadius: "10px",
+    padding: "9px 10px",
+    color: "#263a32",
+    backgroundColor: "#ffffff",
+    fontWeight: 700,
+  },
+  primaryImagePreview: {
+    width: "120px",
+    height: "120px",
+    objectFit: "cover",
+    borderRadius: "8px",
+    backgroundColor: "#edf3ef",
+    border: "1px solid #dce8e1",
+  },
+  imagePreviewModalContent: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f4f8f6",
+    border: "1px solid #dce8e1",
+    borderRadius: "16px",
+    padding: "16px",
+  },
+  imagePreviewLarge: {
+    width: "100%",
+    maxHeight: "72vh",
+    objectFit: "contain",
+    borderRadius: "12px",
+    backgroundColor: "#edf3ef",
+  },
 };
