@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import { formatGiftColor } from "../utils/giftColors";
+import { formatGiftGraphic } from "../utils/giftGraphics";
 import { formatGiftOption } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
@@ -172,6 +173,9 @@ export default function SubmittedOrderScreen({
           item.selectedColorNameAtTime
             ? formatGiftColor(item.selectedColorNameAtTime)
             : "",
+          item.selectedGraphicNameAtTime
+            ? formatGiftGraphic(item.selectedGraphicNameAtTime)
+            : "",
           item.customizationTextAtTime
             ? `Personalization: ${item.customizationTextAtTime}`
             : "",
@@ -317,6 +321,11 @@ export default function SubmittedOrderScreen({
                           {item.selectedColorNameAtTime && (
                             <p style={styles.itemDetails}>
                               {formatGiftColor(item.selectedColorNameAtTime)}
+                            </p>
+                          )}
+                          {item.selectedGraphicNameAtTime && (
+                            <p style={styles.itemDetails}>
+                              {formatGiftGraphic(item.selectedGraphicNameAtTime)}
                             </p>
                           )}
                           {item.customizationTextAtTime && (

@@ -5,6 +5,11 @@ import GiftDetailScreen from "./GiftDetailScreen";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
 import { getDefaultGiftColor, parseGiftColors, formatGiftColor } from "../utils/giftColors";
 import {
+  formatGiftGraphic,
+  getDefaultGiftGraphic,
+  parseGiftGraphics,
+} from "../utils/giftGraphics";
+import {
   formatGiftOption,
   getGiftOptionPointCost,
   parseGiftOptionChoices,
@@ -139,6 +144,7 @@ export default function GiftCatalogScreen({
     giftId: string,
     selectedOption?: string,
     selectedColorId?: string,
+    selectedGraphicId?: string,
     customizationText?: string
   ) {
     return cartItems.find(
@@ -146,6 +152,7 @@ export default function GiftCatalogScreen({
         item.giftItemId === giftId &&
         (item.selectedOption ?? "") === (selectedOption ?? "") &&
         (item.selectedColorId ?? "") === (selectedColorId ?? "") &&
+        (item.selectedGraphicId ?? "") === (selectedGraphicId ?? "") &&
         (item.customizationText ?? "") === (customizationText ?? "")
     );
   }
@@ -158,6 +165,7 @@ export default function GiftCatalogScreen({
     gift: GiftItem,
     selectedOption = "",
     selectedColorId = "",
+    selectedGraphicId = "",
     customizationText = ""
   ) {
     if (participant.hasSubmittedOrder) {
@@ -175,6 +183,10 @@ export default function GiftCatalogScreen({
     const selectedColor =
       giftColors.find((color) => color.id === selectedColorId) ||
       getDefaultGiftColor(giftColors);
+    const giftGraphics = parseGiftGraphics(gift.graphicOptions);
+    const selectedGraphic =
+      giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
+      getDefaultGiftGraphic(giftGraphics);
 
     if (giftOptions.length > 0 && !selectedOption) {
       setSelectedGift(gift);
@@ -188,9 +200,9 @@ export default function GiftCatalogScreen({
       return;
     }
 
-    if (gift.customizationLabel && !customizationText.trim()) {
+    if (giftGraphics.length > 0 && !selectedGraphic) {
       setSelectedGift(gift);
-      setErrorMessage(`Please enter ${gift.customizationLabel}.`);
+      setErrorMessage(`Please choose a graphic for ${gift.title}.`);
       return;
     }
 
@@ -209,6 +221,7 @@ export default function GiftCatalogScreen({
         gift.id,
         selectedOption,
         selectedColor?.id ?? "",
+        selectedGraphic?.id ?? "",
         customizationText.trim()
       );
 
@@ -231,6 +244,10 @@ export default function GiftCatalogScreen({
           selectedColorId: selectedColor?.id || null,
           selectedColorName: selectedColor?.name || null,
           selectedColorHex: selectedColor?.hex || null,
+          selectedGraphicId: selectedGraphic?.id || null,
+          selectedGraphicName: selectedGraphic?.name || null,
+          selectedGraphicImageKey: selectedGraphic?.imageKey || null,
+          selectedGraphicImageUrl: selectedGraphic?.imageUrl || null,
           customizationText: customizationText.trim() || null,
         });
       }
@@ -536,6 +553,11 @@ export default function GiftCatalogScreen({
                         {cartItem.selectedColorName && (
                           <p style={styles.cartItemDetails}>
                             {formatGiftColor(cartItem.selectedColorName)}
+                          </p>
+                        )}
+                        {cartItem.selectedGraphicName && (
+                          <p style={styles.cartItemDetails}>
+                            {formatGiftGraphic(cartItem.selectedGraphicName)}
                           </p>
                         )}
                         {cartItem.customizationText && (

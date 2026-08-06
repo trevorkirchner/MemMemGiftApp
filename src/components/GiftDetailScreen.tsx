@@ -3,6 +3,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
 import { getDefaultGiftColor, parseGiftColors } from "../utils/giftColors";
+import { getDefaultGiftGraphic, parseGiftGraphics } from "../utils/giftGraphics";
 import {
   getGiftOptionLabel,
   getGiftOptionPointCost,
@@ -24,6 +25,7 @@ type GiftDetailScreenProps = {
     gift: GiftItem,
     selectedOption?: string,
     selectedColorId?: string,
+    selectedGraphicId?: string,
     customizationText?: string
   ) => void;
 };
@@ -39,18 +41,26 @@ export default function GiftDetailScreen({
   const [detailGift, setDetailGift] = useState(gift);
   const [giftImages, setGiftImages] = useState<GiftImage[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [graphicImageUrls, setGraphicImageUrls] = useState<Record<string, string>>({});
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
   const giftOptions = parseGiftOptionChoices(detailGift.optionValues);
   const giftColors = parseGiftColors(detailGift.colorOptions);
+  const giftGraphics = parseGiftGraphics(detailGift.graphicOptions);
   const [selectedOption, setSelectedOption] = useState(giftOptions[0]?.label ?? "");
   const [selectedColorId, setSelectedColorId] = useState(
     getDefaultGiftColor(giftColors)?.id ?? ""
+  );
+  const [selectedGraphicId, setSelectedGraphicId] = useState(
+    getDefaultGiftGraphic(giftGraphics)?.id ?? ""
   );
   const [customizationText, setCustomizationText] = useState("");
   const selectedColor =
     giftColors.find((color) => color.id === selectedColorId) ||
     getDefaultGiftColor(giftColors);
+  const selectedGraphic =
+    giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
+    getDefaultGiftGraphic(giftGraphics);
   const selectedPointCost = getGiftOptionPointCost(
     giftOptions,
     selectedOption,
@@ -97,11 +107,12 @@ export default function GiftDetailScreen({
   const cannotAfford = !allowOverPoints && selectedPointCost > remainingPoints;
   const requiresOption = giftOptions.length > 0;
   const requiresColor = giftColors.length > 0;
-  const requiresCustomization = Boolean(detailGift.customizationLabel);
+  const requiresGraphic = giftGraphics.length > 0;
+  const hasCustomization = Boolean(detailGift.customizationLabel);
   const missingRequiredSelection =
     (requiresOption && !selectedOption) ||
     (requiresColor && !selectedColor) ||
-    (requiresCustomization && !customizationText.trim());
+    (requiresGraphic && !selectedGraphic);
 
   useEffect(() => {
     setDetailGift(gift);
@@ -112,15 +123,47 @@ export default function GiftDetailScreen({
   useEffect(() => {
     const nextOptions = parseGiftOptionChoices(detailGift.optionValues);
     const nextColors = parseGiftColors(detailGift.colorOptions);
+    const nextGraphics = parseGiftGraphics(detailGift.graphicOptions);
 
     setSelectedOption(nextOptions[0]?.label ?? "");
     setSelectedColorId(getDefaultGiftColor(nextColors)?.id ?? "");
+    setSelectedGraphicId(getDefaultGiftGraphic(nextGraphics)?.id ?? "");
     setCustomizationText("");
-  }, [detailGift.id, detailGift.optionValues, detailGift.colorOptions]);
+  }, [
+    detailGift.id,
+    detailGift.optionValues,
+    detailGift.colorOptions,
+    detailGift.graphicOptions,
+  ]);
 
   useEffect(() => {
     setSelectedImageIndex(0);
   }, [selectedColorId, selectedOption]);
+
+  useEffect(() => {
+    async function loadGraphicUrls() {
+      const graphicsWithKeys = giftGraphics.filter((graphic) => graphic.imageKey);
+
+      if (graphicsWithKeys.length === 0) {
+        setGraphicImageUrls({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        graphicsWithKeys.map(async (graphic) => {
+          const url = await getGiftImageUrl(graphic.imageKey);
+          return [graphic.id, url] as const;
+        })
+      );
+
+      setGraphicImageUrls(Object.fromEntries(entries));
+    }
+
+    loadGraphicUrls().catch((error) => {
+      console.error("Graphic image load error:", error);
+      setGraphicImageUrls({});
+    });
+  }, [detailGift.graphicOptions]);
 
   async function loadImages() {
     try {
@@ -289,17 +332,52 @@ export default function GiftDetailScreen({
                           backgroundColor: color.hex,
                         }}
                       />
-                      <span>{color.name}</span>
+                      <span style={styles.colorName}>{color.name}</span>
                     </button>
                   ))}
                 </div>
               </div>
             )}
 
-            {requiresCustomization && (
+            {giftGraphics.length > 0 && (
+              <div style={styles.optionBox}>
+                <span style={styles.optionLabel}>Choose Graphic</span>
+                <div style={styles.graphicGrid}>
+                  {giftGraphics.map((graphic) => (
+                    <button
+                      key={graphic.id}
+                      type="button"
+                      onClick={() => setSelectedGraphicId(graphic.id)}
+                      style={{
+                        ...styles.graphicOption,
+                        ...(selectedGraphic?.id === graphic.id
+                          ? styles.selectedGraphicOption
+                          : {}),
+                      }}
+                    >
+                      <span style={styles.graphicImageFrame}>
+                        {graphicImageUrls[graphic.id] || graphic.imageUrl ? (
+                          <img
+                            src={graphicImageUrls[graphic.id] || graphic.imageUrl}
+                            alt={graphic.name}
+                            style={styles.graphicImage}
+                          />
+                        ) : (
+                          <span style={styles.graphicPlaceholder}>Logo</span>
+                        )}
+                      </span>
+                      <span style={styles.graphicName}>{graphic.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hasCustomization && (
               <div style={styles.optionBox}>
                 <label htmlFor="gift-customization" style={styles.optionLabel}>
                   {detailGift.customizationLabel}
+                  <span style={styles.optionalBadge}>Optional</span>
                 </label>
                 <input
                   id="gift-customization"
@@ -328,6 +406,7 @@ export default function GiftDetailScreen({
                   detailGift,
                   selectedOption,
                   selectedColor?.id ?? "",
+                  selectedGraphic?.id ?? "",
                   customizationText.trim()
                 )
               }
@@ -376,7 +455,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detailGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(min(100%, 520px), 1.15fr) minmax(min(100%, 360px), 0.85fr)",
+    gridTemplateColumns: "minmax(min(100%, 560px), 1.15fr) minmax(min(100%, 360px), 0.85fr)",
     gap: "clamp(18px, 4vw, 28px)",
     alignItems: "start",
   },
@@ -390,7 +469,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mainImageWrapper: {
     position: "relative",
-    height: "clamp(340px, 58vw, 620px)",
+    width: "100%",
+    aspectRatio: "1 / 1",
     borderRadius: "clamp(14px, 4vw, 18px)",
     overflow: "hidden",
     backgroundColor: "#edf3ef",
@@ -547,11 +627,23 @@ arrowIconLeft: {
     marginTop: "16px",
   },
   optionLabel: {
-    display: "block",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
     color: "#263a32",
     fontSize: "13px",
     fontWeight: 900,
     marginBottom: "8px",
+  },
+  optionalBadge: {
+    borderRadius: "999px",
+    backgroundColor: "#e5f0ea",
+    color: "var(--tg-primary)",
+    fontSize: "11px",
+    fontWeight: 900,
+    padding: "4px 8px",
+    flex: "0 0 auto",
   },
   optionSelect: {
     width: "100%",
@@ -564,30 +656,89 @@ arrowIconLeft: {
   },
   colorGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))",
     gap: "10px",
   },
   colorOption: {
     border: "1px solid #ccd8d1",
     borderRadius: "12px",
-    padding: "10px",
+    minHeight: "44px",
+    padding: "8px 10px",
     backgroundColor: "#ffffff",
     color: "#263a32",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
-    gap: "9px",
+    gap: "8px",
     fontWeight: 800,
+    fontSize: "14px",
+    lineHeight: 1.15,
+    textAlign: "left",
+    overflow: "hidden",
   },
   selectedColorOption: {
     borderColor: "var(--tg-primary)",
     backgroundColor: "#e5f0ea",
   },
   colorSwatch: {
-    width: "24px",
-    height: "24px",
+    width: "22px",
+    height: "22px",
     borderRadius: "999px",
     border: "1px solid rgba(0,0,0,0.18)",
     flex: "0 0 auto",
+  },
+  colorName: {
+    minWidth: 0,
+    overflowWrap: "anywhere",
+  },
+  graphicGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 118px), 1fr))",
+    gap: "10px",
+  },
+  graphicOption: {
+    border: "1px solid #ccd8d1",
+    borderRadius: "14px",
+    backgroundColor: "#ffffff",
+    color: "#263a32",
+    cursor: "pointer",
+    padding: "10px",
+    display: "grid",
+    gap: "8px",
+    justifyItems: "center",
+    textAlign: "center",
+    fontWeight: 900,
+  },
+  selectedGraphicOption: {
+    borderColor: "var(--tg-primary)",
+    backgroundColor: "#e5f0ea",
+    boxShadow: "inset 0 0 0 1px var(--tg-primary)",
+  },
+  graphicImageFrame: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    borderRadius: "10px",
+    border: "1px solid #dce8e1",
+    backgroundColor: "#f8faf9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  graphicImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+  },
+  graphicPlaceholder: {
+    color: "#5f6f68",
+    fontSize: "12px",
+  },
+  graphicName: {
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    fontSize: "13px",
+    lineHeight: 1.2,
   },
 };

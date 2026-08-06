@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import { formatGiftColor } from "../utils/giftColors";
+import { formatGiftGraphic } from "../utils/giftGraphics";
 import { formatGiftOption } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
@@ -50,6 +51,10 @@ export default function CheckoutScreen({
         selectedColorId: cartItem.selectedColorId ?? "",
         selectedColorName: cartItem.selectedColorName ?? "",
         selectedColorHex: cartItem.selectedColorHex ?? "",
+        selectedGraphicId: cartItem.selectedGraphicId ?? "",
+        selectedGraphicName: cartItem.selectedGraphicName ?? "",
+        selectedGraphicImageKey: cartItem.selectedGraphicImageKey ?? "",
+        selectedGraphicImageUrl: cartItem.selectedGraphicImageUrl ?? "",
         customizationText: cartItem.customizationText ?? "",
         lineTotal: (cartItem.quantity ?? 0) * (cartItem.pointCostAtTime ?? 0),
       };
@@ -167,6 +172,10 @@ export default function CheckoutScreen({
           selectedColorIdAtTime: row.selectedColorId || null,
           selectedColorNameAtTime: row.selectedColorName || null,
           selectedColorHexAtTime: row.selectedColorHex || null,
+          selectedGraphicIdAtTime: row.selectedGraphicId || null,
+          selectedGraphicNameAtTime: row.selectedGraphicName || null,
+          selectedGraphicImageKeyAtTime: row.selectedGraphicImageKey || null,
+          selectedGraphicImageUrlAtTime: row.selectedGraphicImageUrl || null,
           customizationTextAtTime: row.customizationText || null,
           quantity: row.quantity,
         });
@@ -282,6 +291,11 @@ export default function CheckoutScreen({
                       {row.selectedColorName && (
                         <p style={styles.itemDetails}>
                           {formatGiftColor(row.selectedColorName)}
+                        </p>
+                      )}
+                      {row.selectedGraphicName && (
+                        <p style={styles.itemDetails}>
+                          {formatGiftGraphic(row.selectedGraphicName)}
                         </p>
                       )}
                       {row.customizationText && (

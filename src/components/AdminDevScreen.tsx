@@ -16,6 +16,14 @@ import {
   type GiftColorOption,
 } from "../utils/giftColors";
 import {
+  createGiftGraphicOption,
+  formatGiftGraphic,
+  normalizeGiftGraphics,
+  parseGiftGraphics,
+  serializeGiftGraphics,
+  type GiftGraphicOption,
+} from "../utils/giftGraphics";
+import {
   formatGiftOption,
   parseGiftOptionChoices,
   serializeGiftOptions,
@@ -104,6 +112,10 @@ type GiftOptionEditorValue = {
   pointCost: string;
 };
 
+type GiftGraphicEditorValue = GiftGraphicOption & {
+  imageFile?: File | null;
+};
+
 function createGiftOptionEditorValue(
   option: Partial<GiftOptionChoice> = {}
 ): GiftOptionEditorValue {
@@ -113,6 +125,15 @@ function createGiftOptionEditorValue(
       typeof option.pointCost === "number" && !Number.isNaN(option.pointCost)
         ? String(option.pointCost)
         : "",
+  };
+}
+
+function createGiftGraphicEditorValue(
+  graphic: Partial<GiftGraphicEditorValue> = {}
+): GiftGraphicEditorValue {
+  return {
+    ...createGiftGraphicOption(graphic),
+    imageFile: graphic.imageFile ?? null,
   };
 }
 
@@ -211,6 +232,8 @@ export default function AdminDevScreen() {
     optionValues: [createGiftOptionEditorValue()],
     hasColors: false,
     colorOptions: [createGiftColorOption({ isDefault: true })],
+    hasGraphics: false,
+    graphicOptions: [createGiftGraphicEditorValue({ isDefault: true })],
     hasCustomization: false,
     customizationLabel: "",
     customizationHelpText: "",
@@ -257,6 +280,8 @@ export default function AdminDevScreen() {
     optionValues: [createGiftOptionEditorValue()],
     hasColors: false,
     colorOptions: [createGiftColorOption({ isDefault: true })],
+    hasGraphics: false,
+    graphicOptions: [createGiftGraphicEditorValue({ isDefault: true })],
     hasCustomization: false,
     customizationLabel: "",
     customizationHelpText: "",
@@ -690,6 +715,7 @@ export default function AdminDevScreen() {
 
   const giftOptionChoices = parseGiftOptionChoices(gift.optionValues);
   const colorOptions = parseGiftColors(gift.colorOptions);
+  const graphicOptions = parseGiftGraphics(gift.graphicOptions);
 
   setEditGift({
     title: gift.title ?? "",
@@ -707,6 +733,10 @@ export default function AdminDevScreen() {
     colorOptions: colorOptions.length > 0
       ? colorOptions
       : [createGiftColorOption({ isDefault: true })],
+    hasGraphics: graphicOptions.length > 0,
+    graphicOptions: graphicOptions.length > 0
+      ? graphicOptions.map(createGiftGraphicEditorValue)
+      : [createGiftGraphicEditorValue({ isDefault: true })],
     hasCustomization: Boolean(gift.customizationLabel),
     customizationLabel: gift.customizationLabel ?? "",
     customizationHelpText: gift.customizationHelpText ?? "",
@@ -734,6 +764,28 @@ export default function AdminDevScreen() {
     setSelectedGiftImageUrls((current) => ({
       ...current,
       ...Object.fromEntries(urlEntries),
+    }));
+  }
+
+  const graphicsMissingUrls = graphicOptions.filter(
+    (graphic) => graphic.imageKey && !graphic.imageUrl
+  );
+
+  if (graphicsMissingUrls.length > 0) {
+    const graphicUrlEntries = await Promise.all(
+      graphicsMissingUrls.map(async (graphic) => {
+        const url = await getGiftImageUrl(graphic.imageKey);
+        return [graphic.id, url] as const;
+      })
+    );
+    const graphicUrlsById = Object.fromEntries(graphicUrlEntries);
+
+    setEditGift((current) => ({
+      ...current,
+      graphicOptions: current.graphicOptions.map((graphic) => ({
+        ...graphic,
+        imageUrl: graphicUrlsById[graphic.id] || graphic.imageUrl,
+      })),
     }));
   }
 }
@@ -973,6 +1025,9 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
   const colorOptions = editGift.hasColors
     ? normalizeGiftColors(editGift.colorOptions)
     : [];
+  const graphicOptions = editGift.hasGraphics
+    ? normalizeGiftGraphics(editGift.graphicOptions)
+    : [];
   const customizationMaxLength = Number(editGift.customizationMaxLength);
 
   if (!title || Number.isNaN(pointCost)) {
@@ -987,6 +1042,21 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
 
   if (editGift.hasColors && colorOptions.length === 0) {
     setMessage("Please add at least one color option for this gift.");
+    return;
+  }
+
+  if (editGift.hasGraphics && graphicOptions.length === 0) {
+    setMessage("Please add at least one graphic option for this gift.");
+    return;
+  }
+
+  if (
+    editGift.hasGraphics &&
+    editGift.graphicOptions.some(
+      (graphic) => graphic.name.trim() && !graphic.imageFile && !graphic.imageUrl
+    )
+  ) {
+    setMessage("Please add an image for each graphic option.");
     return;
   }
 
@@ -1009,6 +1079,14 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
       sortOrder
     );
 
+    const savedGraphicOptions = editGift.hasGraphics
+      ? await prepareGiftGraphicsForSave({
+          tournamentId: selectedGiftForEdit.tournamentId,
+          giftItemId: selectedGiftForEdit.id,
+          graphics: editGift.graphicOptions,
+        })
+      : [];
+
     await client.models.GiftItem.update({
       id: selectedGiftForEdit.id,
       title,
@@ -1018,6 +1096,9 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
       optionLabel: editGift.hasOptions ? editGift.optionLabel.trim() || "Option" : null,
       optionValues: editGift.hasOptions ? serializeGiftOptions(optionValues) : null,
       colorOptions: editGift.hasColors ? serializeGiftColors(colorOptions) : null,
+      graphicOptions: editGift.hasGraphics
+        ? serializeGiftGraphics(savedGraphicOptions)
+        : null,
       customizationLabel: editGift.hasCustomization
         ? editGift.customizationLabel.trim()
         : null,
@@ -1549,10 +1630,13 @@ async function deleteGiftImage(image: GiftImage) {
             const colorText = item.selectedColorNameAtTime
               ? `, ${formatGiftColor(item.selectedColorNameAtTime)}`
               : "";
+            const graphicText = item.selectedGraphicNameAtTime
+              ? `, ${formatGiftGraphic(item.selectedGraphicNameAtTime)}`
+              : "";
             const customizationText = item.customizationTextAtTime
               ? `, Personalization: ${item.customizationTextAtTime}`
               : "";
-            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}${customizationText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
+            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}${graphicText}${customizationText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
           })
           .join(" | "),
       };
@@ -1739,6 +1823,11 @@ async function deleteGiftImage(image: GiftImage) {
               ${
                 item.selectedColorNameAtTime
                   ? `<span>${escapeHtml(formatGiftColor(item.selectedColorNameAtTime))}</span>`
+                  : ""
+              }
+              ${
+                item.selectedGraphicNameAtTime
+                  ? `<span>${escapeHtml(formatGiftGraphic(item.selectedGraphicNameAtTime))}</span>`
                   : ""
               }
               ${
@@ -2004,6 +2093,10 @@ async function deleteGiftImage(image: GiftImage) {
         selectedColorId: cartItem.selectedColorId ?? "",
         selectedColorName: cartItem.selectedColorName ?? "",
         selectedColorHex: cartItem.selectedColorHex ?? "",
+        selectedGraphicId: cartItem.selectedGraphicId ?? "",
+        selectedGraphicName: cartItem.selectedGraphicName ?? "",
+        selectedGraphicImageKey: cartItem.selectedGraphicImageKey ?? "",
+        selectedGraphicImageUrl: cartItem.selectedGraphicImageUrl ?? "",
         customizationText: cartItem.customizationText ?? "",
       };
     });
@@ -2055,6 +2148,10 @@ async function deleteGiftImage(image: GiftImage) {
           selectedColorIdAtTime: row.selectedColorId || null,
           selectedColorNameAtTime: row.selectedColorName || null,
           selectedColorHexAtTime: row.selectedColorHex || null,
+          selectedGraphicIdAtTime: row.selectedGraphicId || null,
+          selectedGraphicNameAtTime: row.selectedGraphicName || null,
+          selectedGraphicImageKeyAtTime: row.selectedGraphicImageKey || null,
+          selectedGraphicImageUrlAtTime: row.selectedGraphicImageUrl || null,
           customizationTextAtTime: row.customizationText || null,
           quantity: row.quantity,
         });
@@ -2190,6 +2287,9 @@ async function deleteGiftImage(image: GiftImage) {
   const colorOptions = newGift.hasColors
     ? normalizeGiftColors(newGift.colorOptions)
     : [];
+  const graphicOptions = newGift.hasGraphics
+    ? normalizeGiftGraphics(newGift.graphicOptions)
+    : [];
   const customizationMaxLength = Number(newGift.customizationMaxLength);
 
   if (!newGift.tournamentId || !title || Number.isNaN(pointCost)) {
@@ -2204,6 +2304,21 @@ async function deleteGiftImage(image: GiftImage) {
 
   if (newGift.hasColors && colorOptions.length === 0) {
     setMessage("Please add at least one color option for this gift.");
+    return;
+  }
+
+  if (newGift.hasGraphics && graphicOptions.length === 0) {
+    setMessage("Please add at least one graphic option for this gift.");
+    return;
+  }
+
+  if (
+    newGift.hasGraphics &&
+    newGift.graphicOptions.some(
+      (graphic) => graphic.name.trim() && !graphic.imageFile && !graphic.imageUrl
+    )
+  ) {
+    setMessage("Please add an image for each graphic option.");
     return;
   }
 
@@ -2235,6 +2350,7 @@ async function deleteGiftImage(image: GiftImage) {
       optionLabel: newGift.hasOptions ? newGift.optionLabel.trim() || "Option" : null,
       optionValues: newGift.hasOptions ? serializeGiftOptions(optionValues) : null,
       colorOptions: newGift.hasColors ? serializeGiftColors(colorOptions) : null,
+      graphicOptions: null,
       customizationLabel: newGift.hasCustomization
         ? newGift.customizationLabel.trim()
         : null,
@@ -2251,6 +2367,19 @@ async function deleteGiftImage(image: GiftImage) {
 
     if (!createdGift?.id) {
       throw new Error("Gift item was not created.");
+    }
+
+    if (newGift.hasGraphics) {
+      const savedGraphicOptions = await prepareGiftGraphicsForSave({
+        tournamentId: createdGift.tournamentId,
+        giftItemId: createdGift.id,
+        graphics: newGift.graphicOptions,
+      });
+
+      await client.models.GiftItem.update({
+        id: createdGift.id,
+        graphicOptions: serializeGiftGraphics(savedGraphicOptions),
+      });
     }
 
     if (newGiftImageFiles && newGiftImageFiles.length > 0) {
@@ -2287,6 +2416,8 @@ async function deleteGiftImage(image: GiftImage) {
       optionValues: [createGiftOptionEditorValue()],
       hasColors: false,
       colorOptions: [createGiftColorOption({ isDefault: true })],
+      hasGraphics: false,
+      graphicOptions: [createGiftGraphicEditorValue({ isDefault: true })],
       hasCustomization: false,
       customizationLabel: "",
       customizationHelpText: "",
@@ -2530,6 +2661,79 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
     }
 
     return nextColors;
+  }
+
+  function updateGraphicOption(
+    graphics: GiftGraphicEditorValue[],
+    graphicId: string,
+    updates: Partial<GiftGraphicEditorValue>
+  ) {
+    return graphics.map((graphic) =>
+      graphic.id === graphicId ? { ...graphic, ...updates } : graphic
+    );
+  }
+
+  function setDefaultGraphic(
+    graphics: GiftGraphicEditorValue[],
+    graphicId: string
+  ) {
+    return graphics.map((graphic) => ({
+      ...graphic,
+      isDefault: graphic.id === graphicId,
+    }));
+  }
+
+  function removeGraphicOption(
+    graphics: GiftGraphicEditorValue[],
+    graphicId: string
+  ) {
+    const nextGraphics = graphics.filter((graphic) => graphic.id !== graphicId);
+
+    if (nextGraphics.length === 0) {
+      return [createGiftGraphicEditorValue({ isDefault: true })];
+    }
+
+    if (!nextGraphics.some((graphic) => graphic.isDefault)) {
+      return setDefaultGraphic(nextGraphics, nextGraphics[0].id);
+    }
+
+    return nextGraphics;
+  }
+
+  async function prepareGiftGraphicsForSave({
+    tournamentId,
+    giftItemId,
+    graphics,
+  }: {
+    tournamentId: string;
+    giftItemId: string;
+    graphics: GiftGraphicEditorValue[];
+  }) {
+    const prepared = await Promise.all(
+      graphics.map(async (graphic) => {
+        let imageKey = graphic.imageKey;
+        let imageUrl = graphic.imageUrl;
+
+        if (graphic.imageFile) {
+          imageKey = await uploadGiftImage({
+            tournamentId,
+            giftItemId,
+            file: graphic.imageFile,
+          });
+          imageUrl = "";
+        }
+
+        return {
+          id: graphic.id,
+          name: graphic.name,
+          imageKey,
+          imageUrl: imageKey ? "" : imageUrl,
+          isDefault: graphic.isDefault,
+        };
+      })
+    );
+
+    return normalizeGiftGraphics(prepared);
   }
 
   async function toggleGiftActive(gift: GiftItem) {
@@ -3796,6 +4000,131 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
             <label style={styles.statusCheckboxLabel}>
                 <input
                 type="checkbox"
+                checked={editGift.hasGraphics}
+                onChange={(event) =>
+                    setEditGift((current) => ({
+                    ...current,
+                    hasGraphics: event.target.checked,
+                    graphicOptions: current.graphicOptions.length
+                        ? current.graphicOptions
+                        : [createGiftGraphicEditorValue({ isDefault: true })],
+                    }))
+                }
+                style={styles.largeCheckbox}
+                />
+                <span>
+                    <strong style={styles.statusCheckboxTitle}>Graphic Options</strong>
+                    <span style={styles.statusCheckboxHint}>
+                    Let participants choose a logo or custom graphic for this gift
+                    </span>
+                </span>
+            </label>
+
+            {editGift.hasGraphics && (
+                <div style={styles.optionEditorBox}>
+                <FieldLabel label="Graphics" />
+                {editGift.graphicOptions.map((graphic, index) => (
+                    <div key={graphic.id} style={styles.graphicEditorRow}>
+                    <div style={styles.graphicPreviewFrame}>
+                        {(graphic.imageFile || graphic.imageUrl) ? (
+                        <img
+                            src={
+                            graphic.imageFile
+                                ? URL.createObjectURL(graphic.imageFile)
+                                : graphic.imageUrl
+                            }
+                            alt={graphic.name || `Graphic ${index + 1}`}
+                            style={styles.graphicPreviewImage}
+                        />
+                        ) : (
+                        <span style={styles.graphicPreviewPlaceholder}>Logo</span>
+                        )}
+                    </div>
+                    <input
+                        value={graphic.name}
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            graphicOptions: updateGraphicOption(
+                            current.graphicOptions,
+                            graphic.id,
+                            { name: event.target.value }
+                            ),
+                        }))
+                        }
+                        placeholder={`Graphic ${index + 1}`}
+                        style={styles.input}
+                    />
+                    <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            graphicOptions: updateGraphicOption(
+                            current.graphicOptions,
+                            graphic.id,
+                            { imageFile: event.target.files?.[0] ?? null }
+                            ),
+                        }))
+                        }
+                        style={styles.input}
+                    />
+                    <button
+                        type="button"
+                        onClick={() =>
+                        setEditGift((current) => ({
+                            ...current,
+                            graphicOptions: setDefaultGraphic(current.graphicOptions, graphic.id),
+                        }))
+                        }
+                        style={{
+                        ...styles.colorActionButton,
+                        ...(graphic.isDefault
+                            ? styles.colorDefaultButton
+                            : styles.colorSecondaryButton),
+                        }}
+                    >
+                        {graphic.isDefault ? "Default" : "Set Default"}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() =>
+                        setEditGift((current) => ({
+                            ...current,
+                            graphicOptions: removeGraphicOption(current.graphicOptions, graphic.id),
+                        }))
+                        }
+                        style={{ ...styles.colorActionButton, ...styles.colorRemoveButton }}
+                    >
+                        <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                    </div>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={() =>
+                    setEditGift((current) => ({
+                        ...current,
+                        graphicOptions: [
+                        ...current.graphicOptions,
+                        createGiftGraphicEditorValue({
+                            isDefault: current.graphicOptions.length === 0,
+                        }),
+                        ],
+                    }))
+                    }
+                    style={styles.secondaryButton}
+                >
+                    <ButtonContent icon="plus" label="Add Graphic" />
+                </button>
+                </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
+                <input
+                type="checkbox"
                 checked={editGift.isActive}
                 onChange={(event) =>
                     setEditGift((current) => ({
@@ -4540,6 +4869,131 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
               </div>
             )}
 
+            <label style={styles.statusCheckboxLabel}>
+              <input
+                type="checkbox"
+                checked={newGift.hasGraphics}
+                onChange={(event) =>
+                  setNewGift((current) => ({
+                    ...current,
+                    hasGraphics: event.target.checked,
+                    graphicOptions: current.graphicOptions.length
+                      ? current.graphicOptions
+                      : [createGiftGraphicEditorValue({ isDefault: true })],
+                  }))
+                }
+                style={styles.largeCheckbox}
+              />
+              <span>
+                <strong style={styles.statusCheckboxTitle}>Graphic Options</strong>
+                <span style={styles.statusCheckboxHint}>
+                  Let participants choose a logo or custom graphic for this gift
+                </span>
+              </span>
+            </label>
+
+            {newGift.hasGraphics && (
+              <div style={styles.optionEditorBox}>
+                <FieldLabel label="Graphics" />
+                {newGift.graphicOptions.map((graphic, index) => (
+                  <div key={graphic.id} style={styles.graphicEditorRow}>
+                    <div style={styles.graphicPreviewFrame}>
+                      {(graphic.imageFile || graphic.imageUrl) ? (
+                        <img
+                          src={
+                            graphic.imageFile
+                              ? URL.createObjectURL(graphic.imageFile)
+                              : graphic.imageUrl
+                          }
+                          alt={graphic.name || `Graphic ${index + 1}`}
+                          style={styles.graphicPreviewImage}
+                        />
+                      ) : (
+                        <span style={styles.graphicPreviewPlaceholder}>Logo</span>
+                      )}
+                    </div>
+                    <input
+                      value={graphic.name}
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          graphicOptions: updateGraphicOption(
+                            current.graphicOptions,
+                            graphic.id,
+                            { name: event.target.value }
+                          ),
+                        }))
+                      }
+                      placeholder={`Graphic ${index + 1}`}
+                      style={styles.input}
+                    />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          graphicOptions: updateGraphicOption(
+                            current.graphicOptions,
+                            graphic.id,
+                            { imageFile: event.target.files?.[0] ?? null }
+                          ),
+                        }))
+                      }
+                      style={styles.input}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewGift((current) => ({
+                          ...current,
+                          graphicOptions: setDefaultGraphic(current.graphicOptions, graphic.id),
+                        }))
+                      }
+                      style={{
+                        ...styles.colorActionButton,
+                        ...(graphic.isDefault
+                          ? styles.colorDefaultButton
+                          : styles.colorSecondaryButton),
+                      }}
+                    >
+                      {graphic.isDefault ? "Default" : "Set Default"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewGift((current) => ({
+                          ...current,
+                          graphicOptions: removeGraphicOption(current.graphicOptions, graphic.id),
+                        }))
+                      }
+                      style={{ ...styles.colorActionButton, ...styles.colorRemoveButton }}
+                    >
+                      <ButtonContent icon="trash" label="Remove" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewGift((current) => ({
+                      ...current,
+                      graphicOptions: [
+                        ...current.graphicOptions,
+                        createGiftGraphicEditorValue({
+                          isDefault: current.graphicOptions.length === 0,
+                        }),
+                      ],
+                    }))
+                  }
+                  style={styles.secondaryButton}
+                >
+                  <ButtonContent icon="plus" label="Add Graphic" />
+                </button>
+              </div>
+            )}
+
             <label style={styles.checkboxLabel}>
               <input
                 type="checkbox"
@@ -4824,6 +5278,11 @@ function ParticipantCartAndOrders({
                       {formatGiftColor(cartItem.selectedColorName)}
                     </p>
                   )}
+                  {cartItem.selectedGraphicName && (
+                    <p style={styles.muted}>
+                      {formatGiftGraphic(cartItem.selectedGraphicName)}
+                    </p>
+                  )}
                   {cartItem.customizationText && (
                     <p style={styles.muted}>
                       Personalization: {cartItem.customizationText}
@@ -4875,6 +5334,9 @@ function ParticipantCartAndOrders({
                               : ""}
                             {item.selectedColorNameAtTime
                               ? ` (${formatGiftColor(item.selectedColorNameAtTime)})`
+                              : ""}
+                            {item.selectedGraphicNameAtTime
+                              ? ` (${formatGiftGraphic(item.selectedGraphicNameAtTime)})`
                               : ""}
                             {item.customizationTextAtTime
                               ? ` (Personalization: ${item.customizationTextAtTime})`
@@ -4977,6 +5439,11 @@ function OrderDetail({
                   {item.selectedColorNameAtTime && (
                     <p style={styles.muted}>
                       {formatGiftColor(item.selectedColorNameAtTime)}
+                    </p>
+                  )}
+                  {item.selectedGraphicNameAtTime && (
+                    <p style={styles.muted}>
+                      {formatGiftGraphic(item.selectedGraphicNameAtTime)}
                     </p>
                   )}
                   {item.customizationTextAtTime && (
@@ -5328,6 +5795,34 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "8px",
     alignItems: "center",
   },
+  graphicEditorRow: {
+    display: "grid",
+    gridTemplateColumns: "76px minmax(140px, 1fr) minmax(190px, 1fr) 118px 110px",
+    gap: "8px",
+    alignItems: "center",
+  },
+  graphicPreviewFrame: {
+    width: "76px",
+    aspectRatio: "1 / 1",
+    border: "1px solid #dce8e1",
+    borderRadius: "12px",
+    backgroundColor: "#ffffff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  graphicPreviewImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+  },
+  graphicPreviewPlaceholder: {
+    color: "#5f6f68",
+    fontSize: "12px",
+    fontWeight: 900,
+  },
   colorInput: {
     width: "54px",
     height: "46px",
@@ -5612,7 +6107,7 @@ giftImagePlaceholder: {
   modalCard: {
     position: "relative",
     width: "100%",
-    maxWidth: "680px",
+    maxWidth: "880px",
     maxHeight: "90vh",
     overflow: "hidden",
     backgroundColor: "#ffffff",
@@ -5741,7 +6236,9 @@ imageManagePreview: {
     gap: "10px",
   },
   primaryImageOption: {
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns:
+      "22px 120px minmax(96px, 1fr) minmax(128px, 150px) minmax(128px, 150px) auto auto",
     alignItems: "center",
     gap: "10px",
     borderWidth: "2px",
@@ -5778,10 +6275,12 @@ imageManagePreview: {
     userSelect: "none",
   },
   primaryImageLabel: {
-    flex: "1 1 auto",
+    minWidth: 0,
+    overflowWrap: "anywhere",
   },
   imageColorSelect: {
-    minWidth: "150px",
+    width: "100%",
+    minWidth: 0,
     border: "1px solid #ccd8d1",
     borderRadius: "10px",
     padding: "9px 10px",
