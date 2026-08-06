@@ -129,6 +129,7 @@ const schema = a.schema({
       altText: a.string(),
       sortOrder: a.integer(),
       isPrimary: a.boolean().default(false),
+      optionValue: a.string(),
       colorOptionId: a.string(),
 
       giftItem: a.belongsTo("GiftItem", "giftItemId"),

@@ -1041,6 +1041,9 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
             id: image.id,
             sortOrder: index + 1,
             isPrimary: image.id === editGiftPrimaryImageId,
+            optionValue: editGift.hasOptions
+              ? image.optionValue || null
+              : null,
             colorOptionId:
               colorOptions.find((color) => color.imageIds.includes(image.id))?.id ?? null,
           })
@@ -3893,6 +3896,38 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                         <span style={styles.primaryImageLabel}>
                         {index === 0 ? "Primary Image" : `Gallery Image ${index + 1}`}
                         </span>
+
+                        {editGift.hasOptions && editGift.optionValues.length > 0 && (
+                        <select
+                            value={image.optionValue ?? ""}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) => {
+                            const nextOptionValue = event.target.value || null;
+
+                            setEditGiftImages((current) =>
+                                current.map((giftImage) =>
+                                giftImage.id === image.id
+                                    ? {
+                                        ...giftImage,
+                                        optionValue: nextOptionValue,
+                                    }
+                                    : giftImage
+                                )
+                            );
+                            }}
+                            disabled={isWorking}
+                            style={styles.imageColorSelect}
+                        >
+                            <option value="">All options</option>
+                            {editGift.optionValues
+                            .filter((option) => option.label.trim().length > 0)
+                            .map((option) => (
+                                <option key={option.label} value={option.label}>
+                                {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        )}
 
                         {editGift.hasColors && editGift.colorOptions.length > 0 && (
                         <select

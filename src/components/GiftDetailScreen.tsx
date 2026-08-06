@@ -64,16 +64,32 @@ export default function GiftDetailScreen({
       return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
     });
 
-    if (!selectedColor) return orderedImages;
+    const optionMatches = selectedOption
+      ? orderedImages.filter((image) => image.optionValue === selectedOption)
+      : [];
+    const colorMatches = selectedColor
+      ? orderedImages.filter(
+          (image) =>
+            image.colorOptionId === selectedColor.id ||
+            selectedColor.imageIds.includes(image.id)
+        )
+      : [];
+    const exactMatches =
+      selectedOption && selectedColor
+        ? orderedImages.filter(
+            (image) =>
+              image.optionValue === selectedOption &&
+              (image.colorOptionId === selectedColor.id ||
+                selectedColor.imageIds.includes(image.id))
+          )
+        : [];
 
-    const colorImages = orderedImages.filter(
-      (image) =>
-        image.colorOptionId === selectedColor.id ||
-        selectedColor.imageIds.includes(image.id)
-    );
+    if (exactMatches.length > 0) return exactMatches;
+    if (colorMatches.length > 0) return colorMatches;
+    if (optionMatches.length > 0) return optionMatches;
 
-    return colorImages.length > 0 ? colorImages : orderedImages;
-  }, [giftImages, selectedColor]);
+    return orderedImages;
+  }, [giftImages, selectedColor, selectedOption]);
 
   const activeImage = sortedImages[selectedImageIndex];
   const activeImageUrl = activeImage ? imageUrls[activeImage.id] : detailGift.imageUrl;
@@ -104,7 +120,7 @@ export default function GiftDetailScreen({
 
   useEffect(() => {
     setSelectedImageIndex(0);
-  }, [selectedColorId]);
+  }, [selectedColorId, selectedOption]);
 
   async function loadImages() {
     try {
@@ -345,7 +361,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
   },
   container: {
-    maxWidth: "1180px",
+    maxWidth: "1280px",
     margin: "0 auto",
   },
   backButton: {
@@ -360,7 +376,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detailGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
+    gridTemplateColumns: "minmax(min(100%, 520px), 1.15fr) minmax(min(100%, 360px), 0.85fr)",
     gap: "clamp(18px, 4vw, 28px)",
     alignItems: "start",
   },
@@ -374,7 +390,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mainImageWrapper: {
     position: "relative",
-    height: "clamp(280px, 70vw, 520px)",
+    height: "clamp(340px, 58vw, 620px)",
     borderRadius: "clamp(14px, 4vw, 18px)",
     overflow: "hidden",
     backgroundColor: "#edf3ef",
