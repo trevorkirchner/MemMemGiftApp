@@ -16,6 +16,7 @@ import {
 } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
+const NO_GRAPHIC_SELECTION = "__no_graphic__";
 
 type Tournament = Schema["Tournament"]["type"];
 type Participant = Schema["Participant"]["type"];
@@ -185,8 +186,10 @@ export default function GiftCatalogScreen({
       getDefaultGiftColor(giftColors);
     const giftGraphics = parseGiftGraphics(gift.graphicOptions);
     const selectedGraphic =
-      giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
-      getDefaultGiftGraphic(giftGraphics);
+      selectedGraphicId === NO_GRAPHIC_SELECTION
+        ? null
+        : giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
+          getDefaultGiftGraphic(giftGraphics);
 
     if (giftOptions.length > 0 && !selectedOption) {
       setSelectedGift(gift);
@@ -200,7 +203,11 @@ export default function GiftCatalogScreen({
       return;
     }
 
-    if (giftGraphics.length > 0 && !selectedGraphic) {
+    if (
+      giftGraphics.length > 0 &&
+      selectedGraphicId !== NO_GRAPHIC_SELECTION &&
+      !selectedGraphic
+    ) {
       setSelectedGift(gift);
       setErrorMessage(`Please choose a graphic for ${gift.title}.`);
       return;
@@ -221,7 +228,7 @@ export default function GiftCatalogScreen({
         gift.id,
         selectedOption,
         selectedColor?.id ?? "",
-        selectedGraphic?.id ?? "",
+        selectedGraphicId === NO_GRAPHIC_SELECTION ? "" : selectedGraphic?.id ?? "",
         customizationText.trim()
       );
 
@@ -696,13 +703,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
-    gap: "clamp(16px, 4vw, 24px)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+    gap: "clamp(14px, 3vw, 18px)",
+    alignItems: "start",
   },
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: "22px",
-    boxShadow: "0 14px 40px rgba(0, 0, 0, 0.1)",
+    borderRadius: "18px",
+    boxShadow: "0 10px 26px rgba(0, 0, 0, 0.08)",
     overflow: "hidden",
     border: "1px solid #dce8e1",
     display: "flex",
@@ -729,7 +737,7 @@ const styles: Record<string, React.CSSProperties> = {
   fontWeight: 700,
 },
   cardBody: {
-    padding: "clamp(16px, 5vw, 20px)",
+    padding: "14px 16px 16px",
     display: "flex",
     flexDirection: "column",
     flex: 1,
@@ -758,10 +766,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   description: {
     color: "#5f6f68",
-    fontSize: "15px",
-    lineHeight: 1.5,
-    marginTop: "12px",
-    flex: 1,
+    fontSize: "14px",
+    lineHeight: 1.45,
+    margin: "10px 0 0",
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
   },
   quantity: {
     color: "#5f6f68",
@@ -790,13 +801,13 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     border: "1px solid #ccd8d1",
     borderRadius: "12px",
-    padding: "13px 16px",
-    fontSize: "15px",
+    padding: "11px 14px",
+    fontSize: "14px",
     fontWeight: 800,
     color: "var(--tg-primary)",
     backgroundColor: "#ffffff",
     cursor: "pointer",
-    marginTop: "18px",
+    marginTop: "14px",
   },
   disabledButton: {
     backgroundColor: "#9aa7a0",
@@ -903,10 +914,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
 imageButton: {
   width: "100%",
-  aspectRatio: "1 / 1",
+  aspectRatio: "4 / 3",
   border: "none",
-  padding: 0,
-  backgroundColor: "#edf3ef",
+  padding: "10px",
+  backgroundColor: "#f7f9f8",
   cursor: "pointer",
   display: "block",
   overflow: "hidden",
@@ -919,7 +930,7 @@ giftTitleButton: {
   color: "var(--tg-primary)",
   fontSize: "clamp(18px, 5.5vw, 20px)",
   lineHeight: 1.2,
-  fontWeight: 800,
+  fontWeight: 900,
   cursor: "pointer",
   textAlign: "left",
   overflowWrap: "anywhere",

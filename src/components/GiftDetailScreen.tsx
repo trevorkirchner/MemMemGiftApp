@@ -14,6 +14,7 @@ const client = generateClient<Schema>();
 
 type GiftItem = Schema["GiftItem"]["type"];
 type GiftImage = Schema["GiftImage"]["type"];
+const NO_GRAPHIC_SELECTION = "__no_graphic__";
 
 type GiftDetailScreenProps = {
   gift: GiftItem;
@@ -55,12 +56,15 @@ export default function GiftDetailScreen({
     getDefaultGiftGraphic(giftGraphics)?.id ?? ""
   );
   const [customizationText, setCustomizationText] = useState("");
+  const [skipCustomization, setSkipCustomization] = useState(false);
   const selectedColor =
     giftColors.find((color) => color.id === selectedColorId) ||
     getDefaultGiftColor(giftColors);
   const selectedGraphic =
-    giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
-    getDefaultGiftGraphic(giftGraphics);
+    selectedGraphicId === NO_GRAPHIC_SELECTION
+      ? null
+      : giftGraphics.find((graphic) => graphic.id === selectedGraphicId) ||
+        getDefaultGiftGraphic(giftGraphics);
   const selectedPointCost = getGiftOptionPointCost(
     giftOptions,
     selectedOption,
@@ -107,12 +111,10 @@ export default function GiftDetailScreen({
   const cannotAfford = !allowOverPoints && selectedPointCost > remainingPoints;
   const requiresOption = giftOptions.length > 0;
   const requiresColor = giftColors.length > 0;
-  const requiresGraphic = giftGraphics.length > 0;
   const hasCustomization = Boolean(detailGift.customizationLabel);
   const missingRequiredSelection =
     (requiresOption && !selectedOption) ||
-    (requiresColor && !selectedColor) ||
-    (requiresGraphic && !selectedGraphic);
+    (requiresColor && !selectedColor);
 
   useEffect(() => {
     setDetailGift(gift);
@@ -129,6 +131,7 @@ export default function GiftDetailScreen({
     setSelectedColorId(getDefaultGiftColor(nextColors)?.id ?? "");
     setSelectedGraphicId(getDefaultGiftGraphic(nextGraphics)?.id ?? "");
     setCustomizationText("");
+    setSkipCustomization(false);
   }, [
     detailGift.id,
     detailGift.optionValues,
@@ -343,6 +346,19 @@ export default function GiftDetailScreen({
               <div style={styles.optionBox}>
                 <span style={styles.optionLabel}>Choose Graphic</span>
                 <div style={styles.graphicGrid}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGraphicId(NO_GRAPHIC_SELECTION)}
+                    style={{
+                      ...styles.graphicOption,
+                      ...(selectedGraphicId === NO_GRAPHIC_SELECTION
+                        ? styles.selectedGraphicOption
+                        : {}),
+                    }}
+                  >
+                    <span style={styles.noGraphicFrame}>No Logo</span>
+                    <span style={styles.graphicName}>No logo</span>
+                  </button>
                   {giftGraphics.map((graphic) => (
                     <button
                       key={graphic.id}
@@ -379,17 +395,32 @@ export default function GiftDetailScreen({
                   {detailGift.customizationLabel}
                   <span style={styles.optionalBadge}>Optional</span>
                 </label>
+                <label style={styles.skipCustomizationOption}>
+                  <input
+                    type="checkbox"
+                    checked={skipCustomization}
+                    onChange={(event) => {
+                      setSkipCustomization(event.target.checked);
+                      if (event.target.checked) {
+                        setCustomizationText("");
+                      }
+                    }}
+                    style={styles.skipCustomizationCheckbox}
+                  />
+                  <span>No custom text</span>
+                </label>
                 <input
                   id="gift-customization"
                   value={customizationText}
                   onChange={(event) => setCustomizationText(event.target.value)}
                   maxLength={detailGift.customizationMaxLength ?? undefined}
                   placeholder="Enter text"
+                  disabled={skipCustomization}
                   style={styles.optionSelect}
                 />
                 <p style={styles.muted}>
                   {detailGift.customizationHelpText ||
-                    "Short names or initials recommended."}
+                    "Short names, initials, or tournament name recommended."}
                 </p>
                 {detailGift.customizationMaxLength && (
                   <p style={styles.muted}>
@@ -406,8 +437,10 @@ export default function GiftDetailScreen({
                   detailGift,
                   selectedOption,
                   selectedColor?.id ?? "",
-                  selectedGraphic?.id ?? "",
-                  customizationText.trim()
+                  selectedGraphicId === NO_GRAPHIC_SELECTION
+                    ? NO_GRAPHIC_SELECTION
+                    : selectedGraphic?.id ?? "",
+                  skipCustomization ? "" : customizationText.trim()
                 )
               }
               disabled={cannotAfford || missingRequiredSelection}
@@ -654,6 +687,26 @@ arrowIconLeft: {
     backgroundColor: "#ffffff",
     fontSize: "15px",
   },
+  skipCustomizationOption: {
+    border: "1px solid #ccd8d1",
+    borderRadius: "12px",
+    backgroundColor: "#ffffff",
+    color: "#263a32",
+    minHeight: "42px",
+    padding: "8px 10px",
+    marginBottom: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  skipCustomizationCheckbox: {
+    width: "18px",
+    height: "18px",
+    accentColor: "var(--tg-primary)",
+  },
   colorGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))",
@@ -734,6 +787,19 @@ arrowIconLeft: {
   graphicPlaceholder: {
     color: "#5f6f68",
     fontSize: "12px",
+  },
+  noGraphicFrame: {
+    width: "100%",
+    aspectRatio: "1 / 1",
+    borderRadius: "10px",
+    border: "1px dashed #b8c8c0",
+    backgroundColor: "#ffffff",
+    color: "#5f6f68",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "13px",
+    fontWeight: 900,
   },
   graphicName: {
     minWidth: 0,
