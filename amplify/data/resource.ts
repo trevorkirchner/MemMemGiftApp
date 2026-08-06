@@ -103,6 +103,9 @@ const schema = a.schema({
       optionLabel: a.string(),
       optionValues: a.string(),
       colorOptions: a.string(),
+      customizationLabel: a.string(),
+      customizationHelpText: a.string(),
+      customizationMaxLength: a.integer(),
       isActive: a.boolean().default(true),
 
       tournament: a.belongsTo("Tournament", "tournamentId"),
@@ -151,6 +154,7 @@ const schema = a.schema({
       selectedColorId: a.string(),
       selectedColorName: a.string(),
       selectedColorHex: a.string(),
+      customizationText: a.string(),
 
       participant: a.belongsTo("Participant", "participantId"),
       giftItem: a.belongsTo("GiftItem", "giftItemId"),
@@ -197,6 +201,7 @@ const schema = a.schema({
       selectedColorIdAtTime: a.string(),
       selectedColorNameAtTime: a.string(),
       selectedColorHexAtTime: a.string(),
+      customizationTextAtTime: a.string(),
       quantity: a.integer().required(),
 
       order: a.belongsTo("Order", "orderId"),

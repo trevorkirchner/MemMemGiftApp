@@ -17,8 +17,9 @@ import {
 } from "../utils/giftColors";
 import {
   formatGiftOption,
-  parseGiftOptions,
+  parseGiftOptionChoices,
   serializeGiftOptions,
+  type GiftOptionChoice,
 } from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
@@ -97,6 +98,23 @@ type ButtonIconName =
   | "trash"
   | "upload"
   | "x";
+
+type GiftOptionEditorValue = {
+  label: string;
+  pointCost: string;
+};
+
+function createGiftOptionEditorValue(
+  option: Partial<GiftOptionChoice> = {}
+): GiftOptionEditorValue {
+  return {
+    label: option.label ?? "",
+    pointCost:
+      typeof option.pointCost === "number" && !Number.isNaN(option.pointCost)
+        ? String(option.pointCost)
+        : "",
+  };
+}
 
 const commonColorHexByName: Record<string, string> = {
   black: "#000000",
@@ -190,9 +208,13 @@ export default function AdminDevScreen() {
     sortOrder: "",
     hasOptions: false,
     optionLabel: "",
-    optionValues: [""],
+    optionValues: [createGiftOptionEditorValue()],
     hasColors: false,
     colorOptions: [createGiftColorOption({ isDefault: true })],
+    hasCustomization: false,
+    customizationLabel: "",
+    customizationHelpText: "",
+    customizationMaxLength: "12",
     isActive: true,
     });
 
@@ -232,9 +254,13 @@ export default function AdminDevScreen() {
     sortOrder: "",
     hasOptions: false,
     optionLabel: "",
-    optionValues: [""],
+    optionValues: [createGiftOptionEditorValue()],
     hasColors: false,
     colorOptions: [createGiftColorOption({ isDefault: true })],
+    hasCustomization: false,
+    customizationLabel: "",
+    customizationHelpText: "",
+    customizationMaxLength: "12",
     isActive: true,
   });
 
@@ -662,6 +688,7 @@ export default function AdminDevScreen() {
       (item) => item.id === gift.id
     ) + 1;
 
+  const giftOptionChoices = parseGiftOptionChoices(gift.optionValues);
   const colorOptions = parseGiftColors(gift.colorOptions);
 
   setEditGift({
@@ -671,15 +698,19 @@ export default function AdminDevScreen() {
     sortOrder: gift.sortOrder === null || gift.sortOrder === undefined
       ? String(Math.max(currentSortPosition, 1))
       : String(gift.sortOrder),
-    hasOptions: parseGiftOptions(gift.optionValues).length > 0,
+    hasOptions: giftOptionChoices.length > 0,
     optionLabel: gift.optionLabel ?? "",
-    optionValues: parseGiftOptions(gift.optionValues).length > 0
-      ? parseGiftOptions(gift.optionValues)
-      : [""],
+    optionValues: giftOptionChoices.length > 0
+      ? giftOptionChoices.map(createGiftOptionEditorValue)
+      : [createGiftOptionEditorValue()],
     hasColors: colorOptions.length > 0,
     colorOptions: colorOptions.length > 0
       ? colorOptions
       : [createGiftColorOption({ isDefault: true })],
+    hasCustomization: Boolean(gift.customizationLabel),
+    customizationLabel: gift.customizationLabel ?? "",
+    customizationHelpText: gift.customizationHelpText ?? "",
+    customizationMaxLength: String(gift.customizationMaxLength ?? 12),
     isActive: gift.isActive ?? true,
   });
 
@@ -942,6 +973,7 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
   const colorOptions = editGift.hasColors
     ? normalizeGiftColors(editGift.colorOptions)
     : [];
+  const customizationMaxLength = Number(editGift.customizationMaxLength);
 
   if (!title || Number.isNaN(pointCost)) {
     setMessage("Please enter a gift title and valid point cost.");
@@ -955,6 +987,16 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
 
   if (editGift.hasColors && colorOptions.length === 0) {
     setMessage("Please add at least one color option for this gift.");
+    return;
+  }
+
+  if (
+    editGift.hasCustomization &&
+    (!editGift.customizationLabel.trim() ||
+      Number.isNaN(customizationMaxLength) ||
+      customizationMaxLength < 1)
+  ) {
+    setMessage("Please enter a customization label and valid max length.");
     return;
   }
 
@@ -976,6 +1018,15 @@ async function updateGift(event: React.FormEvent<HTMLFormElement>) {
       optionLabel: editGift.hasOptions ? editGift.optionLabel.trim() || "Option" : null,
       optionValues: editGift.hasOptions ? serializeGiftOptions(optionValues) : null,
       colorOptions: editGift.hasColors ? serializeGiftColors(colorOptions) : null,
+      customizationLabel: editGift.hasCustomization
+        ? editGift.customizationLabel.trim()
+        : null,
+      customizationHelpText: editGift.hasCustomization
+        ? editGift.customizationHelpText.trim()
+        : null,
+      customizationMaxLength: editGift.hasCustomization
+        ? Math.round(customizationMaxLength)
+        : null,
       isActive: editGift.isActive,
     });
 
@@ -1495,7 +1546,10 @@ async function deleteGiftImage(image: GiftImage) {
             const colorText = item.selectedColorNameAtTime
               ? `, ${formatGiftColor(item.selectedColorNameAtTime)}`
               : "";
-            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
+            const customizationText = item.customizationTextAtTime
+              ? `, Personalization: ${item.customizationTextAtTime}`
+              : "";
+            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}${customizationText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
           })
           .join(" | "),
       };
@@ -1682,6 +1736,11 @@ async function deleteGiftImage(image: GiftImage) {
               ${
                 item.selectedColorNameAtTime
                   ? `<span>${escapeHtml(formatGiftColor(item.selectedColorNameAtTime))}</span>`
+                  : ""
+              }
+              ${
+                item.customizationTextAtTime
+                  ? `<span>${escapeHtml(`Personalization: ${item.customizationTextAtTime}`)}</span>`
                   : ""
               }
             </td>
@@ -1942,6 +2001,7 @@ async function deleteGiftImage(image: GiftImage) {
         selectedColorId: cartItem.selectedColorId ?? "",
         selectedColorName: cartItem.selectedColorName ?? "",
         selectedColorHex: cartItem.selectedColorHex ?? "",
+        customizationText: cartItem.customizationText ?? "",
       };
     });
 
@@ -1992,6 +2052,7 @@ async function deleteGiftImage(image: GiftImage) {
           selectedColorIdAtTime: row.selectedColorId || null,
           selectedColorNameAtTime: row.selectedColorName || null,
           selectedColorHexAtTime: row.selectedColorHex || null,
+          customizationTextAtTime: row.customizationText || null,
           quantity: row.quantity,
         });
       }
@@ -2126,6 +2187,7 @@ async function deleteGiftImage(image: GiftImage) {
   const colorOptions = newGift.hasColors
     ? normalizeGiftColors(newGift.colorOptions)
     : [];
+  const customizationMaxLength = Number(newGift.customizationMaxLength);
 
   if (!newGift.tournamentId || !title || Number.isNaN(pointCost)) {
     setMessage("Please enter at least tournament, gift title, and point cost.");
@@ -2139,6 +2201,16 @@ async function deleteGiftImage(image: GiftImage) {
 
   if (newGift.hasColors && colorOptions.length === 0) {
     setMessage("Please add at least one color option for this gift.");
+    return;
+  }
+
+  if (
+    newGift.hasCustomization &&
+    (!newGift.customizationLabel.trim() ||
+      Number.isNaN(customizationMaxLength) ||
+      customizationMaxLength < 1)
+  ) {
+    setMessage("Please enter a customization label and valid max length.");
     return;
   }
 
@@ -2160,6 +2232,15 @@ async function deleteGiftImage(image: GiftImage) {
       optionLabel: newGift.hasOptions ? newGift.optionLabel.trim() || "Option" : null,
       optionValues: newGift.hasOptions ? serializeGiftOptions(optionValues) : null,
       colorOptions: newGift.hasColors ? serializeGiftColors(colorOptions) : null,
+      customizationLabel: newGift.hasCustomization
+        ? newGift.customizationLabel.trim()
+        : null,
+      customizationHelpText: newGift.hasCustomization
+        ? newGift.customizationHelpText.trim()
+        : null,
+      customizationMaxLength: newGift.hasCustomization
+        ? Math.round(customizationMaxLength)
+        : null,
       isActive: newGift.isActive,
     });
 
@@ -2200,9 +2281,13 @@ async function deleteGiftImage(image: GiftImage) {
       sortOrder: "",
       hasOptions: false,
       optionLabel: "",
-      optionValues: [""],
+      optionValues: [createGiftOptionEditorValue()],
       hasColors: false,
       colorOptions: [createGiftColorOption({ isDefault: true })],
+      hasCustomization: false,
+      customizationLabel: "",
+      customizationHelpText: "",
+      customizationMaxLength: "12",
       isActive: true,
     }));
 
@@ -2346,17 +2431,29 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
     }
   }
 
-  function normalizeGiftOptionValues(values: string[]) {
-    return values.map((value) => value.trim()).filter((value) => value.length > 0);
+  function normalizeGiftOptionValues(values: GiftOptionEditorValue[]) {
+    return values
+      .map((value) => {
+        const pointCost = Number(value.pointCost);
+
+        return {
+          label: value.label.trim(),
+          pointCost:
+            value.pointCost.trim() && !Number.isNaN(pointCost)
+              ? pointCost
+              : null,
+        };
+      })
+      .filter((value) => value.label.length > 0);
   }
 
   function updateOptionValue(
-    values: string[],
+    values: GiftOptionEditorValue[],
     index: number,
-    nextValue: string
+    updates: Partial<GiftOptionEditorValue>
   ) {
     return values.map((value, valueIndex) =>
-      valueIndex === index ? nextValue : value
+      valueIndex === index ? { ...value, ...updates } : value
     );
   }
 
@@ -3418,7 +3515,9 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                     setEditGift((current) => ({
                     ...current,
                     hasOptions: event.target.checked,
-                    optionValues: current.optionValues.length ? current.optionValues : [""],
+                    optionValues: current.optionValues.length
+                        ? current.optionValues
+                        : [createGiftOptionEditorValue()],
                     }))
                 }
                 style={styles.largeCheckbox}
@@ -3450,18 +3549,34 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                 {editGift.optionValues.map((optionValue, index) => (
                     <div key={index} style={styles.optionRow}>
                     <input
-                        value={optionValue}
+                        value={optionValue.label}
                         onChange={(event) =>
                         setEditGift((current) => ({
                             ...current,
                             optionValues: updateOptionValue(
                             current.optionValues,
                             index,
-                            event.target.value
+                            { label: event.target.value }
                             ),
                         }))
                         }
                         placeholder={`Option ${index + 1}`}
+                        style={styles.input}
+                    />
+                    <input
+                        value={optionValue.pointCost}
+                        onChange={(event) =>
+                        setEditGift((current) => ({
+                            ...current,
+                            optionValues: updateOptionValue(
+                            current.optionValues,
+                            index,
+                            { pointCost: event.target.value }
+                            ),
+                        }))
+                        }
+                        placeholder="Point override"
+                        type="number"
                         style={styles.input}
                     />
                     <button
@@ -3471,7 +3586,7 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                             ...current,
                             optionValues:
                             current.optionValues.length <= 1
-                                ? [""]
+                                ? [createGiftOptionEditorValue()]
                                 : current.optionValues.filter((_, valueIndex) => valueIndex !== index),
                         }))
                         }
@@ -3487,13 +3602,80 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                     onClick={() =>
                     setEditGift((current) => ({
                         ...current,
-                        optionValues: [...current.optionValues, ""],
+                        optionValues: [...current.optionValues, createGiftOptionEditorValue()],
                     }))
                     }
                     style={styles.secondaryButton}
                 >
                     <ButtonContent icon="plus" label="Add Option" />
                 </button>
+                </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
+                <input
+                type="checkbox"
+                checked={editGift.hasCustomization}
+                onChange={(event) =>
+                    setEditGift((current) => ({
+                    ...current,
+                    hasCustomization: event.target.checked,
+                    customizationLabel: current.customizationLabel || "Personalization Text",
+                    customizationMaxLength: current.customizationMaxLength || "12",
+                    }))
+                }
+                style={styles.largeCheckbox}
+                />
+                <span>
+                    <strong style={styles.statusCheckboxTitle}>Text Customization</strong>
+                    <span style={styles.statusCheckboxHint}>
+                    Let participants enter names or initials for stitching
+                    </span>
+                </span>
+            </label>
+
+            {editGift.hasCustomization && (
+                <div style={styles.optionEditorBox}>
+                <FieldLabel label="Customization Label" />
+                <input
+                    value={editGift.customizationLabel}
+                    onChange={(event) =>
+                    setEditGift((current) => ({
+                        ...current,
+                        customizationLabel: event.target.value,
+                    }))
+                    }
+                    placeholder="Name or initials"
+                    style={styles.input}
+                />
+
+                <FieldLabel label="Help Text" />
+                <input
+                    value={editGift.customizationHelpText}
+                    onChange={(event) =>
+                    setEditGift((current) => ({
+                        ...current,
+                        customizationHelpText: event.target.value,
+                    }))
+                    }
+                    placeholder="Short names or initials recommended"
+                    style={styles.input}
+                />
+
+                <FieldLabel label="Max Characters" />
+                <input
+                    value={editGift.customizationMaxLength}
+                    onChange={(event) =>
+                    setEditGift((current) => ({
+                        ...current,
+                        customizationMaxLength: event.target.value,
+                    }))
+                    }
+                    placeholder="12"
+                    type="number"
+                    min={1}
+                    style={styles.input}
+                />
                 </div>
             )}
 
@@ -4048,7 +4230,9 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                   setNewGift((current) => ({
                     ...current,
                     hasOptions: event.target.checked,
-                    optionValues: current.optionValues.length ? current.optionValues : [""],
+                    optionValues: current.optionValues.length
+                      ? current.optionValues
+                      : [createGiftOptionEditorValue()],
                   }))
                 }
                 style={styles.largeCheckbox}
@@ -4080,18 +4264,34 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                 {newGift.optionValues.map((optionValue, index) => (
                   <div key={index} style={styles.optionRow}>
                     <input
-                      value={optionValue}
+                      value={optionValue.label}
                       onChange={(event) =>
                         setNewGift((current) => ({
                           ...current,
                           optionValues: updateOptionValue(
                             current.optionValues,
                             index,
-                            event.target.value
+                            { label: event.target.value }
                           ),
                         }))
                       }
                       placeholder={`Option ${index + 1}`}
+                      style={styles.input}
+                    />
+                    <input
+                      value={optionValue.pointCost}
+                      onChange={(event) =>
+                        setNewGift((current) => ({
+                          ...current,
+                          optionValues: updateOptionValue(
+                            current.optionValues,
+                            index,
+                            { pointCost: event.target.value }
+                          ),
+                        }))
+                      }
+                      placeholder="Point override"
+                      type="number"
                       style={styles.input}
                     />
                     <button
@@ -4101,7 +4301,7 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                           ...current,
                           optionValues:
                             current.optionValues.length <= 1
-                              ? [""]
+                              ? [createGiftOptionEditorValue()]
                               : current.optionValues.filter((_, valueIndex) => valueIndex !== index),
                         }))
                       }
@@ -4117,13 +4317,80 @@ async function loadAdminGiftCardImages(gifts: GiftItem[], images: GiftImage[]) {
                   onClick={() =>
                     setNewGift((current) => ({
                       ...current,
-                      optionValues: [...current.optionValues, ""],
+                      optionValues: [...current.optionValues, createGiftOptionEditorValue()],
                     }))
                   }
                   style={styles.secondaryButton}
                 >
                   <ButtonContent icon="plus" label="Add Option" />
                 </button>
+              </div>
+            )}
+
+            <label style={styles.statusCheckboxLabel}>
+              <input
+                type="checkbox"
+                checked={newGift.hasCustomization}
+                onChange={(event) =>
+                  setNewGift((current) => ({
+                    ...current,
+                    hasCustomization: event.target.checked,
+                    customizationLabel: current.customizationLabel || "Personalization Text",
+                    customizationMaxLength: current.customizationMaxLength || "12",
+                  }))
+                }
+                style={styles.largeCheckbox}
+              />
+              <span>
+                <strong style={styles.statusCheckboxTitle}>Text Customization</strong>
+                <span style={styles.statusCheckboxHint}>
+                  Let participants enter names or initials for stitching
+                </span>
+              </span>
+            </label>
+
+            {newGift.hasCustomization && (
+              <div style={styles.optionEditorBox}>
+                <FieldLabel label="Customization Label" />
+                <input
+                  value={newGift.customizationLabel}
+                  onChange={(event) =>
+                    setNewGift((current) => ({
+                      ...current,
+                      customizationLabel: event.target.value,
+                    }))
+                  }
+                  placeholder="Name or initials"
+                  style={styles.input}
+                />
+
+                <FieldLabel label="Help Text" />
+                <input
+                  value={newGift.customizationHelpText}
+                  onChange={(event) =>
+                    setNewGift((current) => ({
+                      ...current,
+                      customizationHelpText: event.target.value,
+                    }))
+                  }
+                  placeholder="Short names or initials recommended"
+                  style={styles.input}
+                />
+
+                <FieldLabel label="Max Characters" />
+                <input
+                  value={newGift.customizationMaxLength}
+                  onChange={(event) =>
+                    setNewGift((current) => ({
+                      ...current,
+                      customizationMaxLength: event.target.value,
+                    }))
+                  }
+                  placeholder="12"
+                  type="number"
+                  min={1}
+                  style={styles.input}
+                />
               </div>
             )}
 
@@ -4522,6 +4789,11 @@ function ParticipantCartAndOrders({
                       {formatGiftColor(cartItem.selectedColorName)}
                     </p>
                   )}
+                  {cartItem.customizationText && (
+                    <p style={styles.muted}>
+                      Personalization: {cartItem.customizationText}
+                    </p>
+                  )}
                 </div>
 
                 <strong>{lineTotal} pts</strong>
@@ -4568,6 +4840,9 @@ function ParticipantCartAndOrders({
                               : ""}
                             {item.selectedColorNameAtTime
                               ? ` (${formatGiftColor(item.selectedColorNameAtTime)})`
+                              : ""}
+                            {item.customizationTextAtTime
+                              ? ` (Personalization: ${item.customizationTextAtTime})`
                               : ""}
                           </span>
                           <span>
@@ -4667,6 +4942,11 @@ function OrderDetail({
                   {item.selectedColorNameAtTime && (
                     <p style={styles.muted}>
                       {formatGiftColor(item.selectedColorNameAtTime)}
+                    </p>
+                  )}
+                  {item.customizationTextAtTime && (
+                    <p style={styles.muted}>
+                      Personalization: {item.customizationTextAtTime}
                     </p>
                   )}
                   <p style={styles.muted}>
@@ -5003,7 +5283,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   optionRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gridTemplateColumns: "minmax(0, 1fr) 150px auto",
     gap: "8px",
     alignItems: "center",
   },

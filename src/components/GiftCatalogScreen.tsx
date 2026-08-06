@@ -4,7 +4,11 @@ import type { Schema } from "../../amplify/data/resource";
 import GiftDetailScreen from "./GiftDetailScreen";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
 import { getDefaultGiftColor, parseGiftColors, formatGiftColor } from "../utils/giftColors";
-import { formatGiftOption, parseGiftOptions } from "../utils/giftOptions";
+import {
+  formatGiftOption,
+  getGiftOptionPointCost,
+  parseGiftOptionChoices,
+} from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -134,13 +138,15 @@ export default function GiftCatalogScreen({
   function getCartItemForGift(
     giftId: string,
     selectedOption?: string,
-    selectedColorId?: string
+    selectedColorId?: string,
+    customizationText?: string
   ) {
     return cartItems.find(
       (item) =>
         item.giftItemId === giftId &&
         (item.selectedOption ?? "") === (selectedOption ?? "") &&
-        (item.selectedColorId ?? "") === (selectedColorId ?? "")
+        (item.selectedColorId ?? "") === (selectedColorId ?? "") &&
+        (item.customizationText ?? "") === (customizationText ?? "")
     );
   }
 
@@ -151,15 +157,20 @@ export default function GiftCatalogScreen({
   async function handleAddToCart(
     gift: GiftItem,
     selectedOption = "",
-    selectedColorId = ""
+    selectedColorId = "",
+    customizationText = ""
   ) {
     if (participant.hasSubmittedOrder) {
       setErrorMessage("Your order has already been submitted and can no longer be changed.");
       return;
     }
 
-    const giftCost = gift.pointCost ?? 0;
-    const giftOptions = parseGiftOptions(gift.optionValues);
+    const giftOptions = parseGiftOptionChoices(gift.optionValues);
+    const giftCost = getGiftOptionPointCost(
+      giftOptions,
+      selectedOption,
+      gift.pointCost ?? 0
+    );
     const giftColors = parseGiftColors(gift.colorOptions);
     const selectedColor =
       giftColors.find((color) => color.id === selectedColorId) ||
@@ -177,6 +188,12 @@ export default function GiftCatalogScreen({
       return;
     }
 
+    if (gift.customizationLabel && !customizationText.trim()) {
+      setSelectedGift(gift);
+      setErrorMessage(`Please enter ${gift.customizationLabel}.`);
+      return;
+    }
+
     if (!allowOverPoints && giftCost > remainingPoints) {
       setErrorMessage(
         `You do not have enough remaining points to add ${gift.title}.`
@@ -191,7 +208,8 @@ export default function GiftCatalogScreen({
       const existingCartItem = getCartItemForGift(
         gift.id,
         selectedOption,
-        selectedColor?.id ?? ""
+        selectedColor?.id ?? "",
+        customizationText.trim()
       );
 
       if (existingCartItem) {
@@ -213,6 +231,7 @@ export default function GiftCatalogScreen({
           selectedColorId: selectedColor?.id || null,
           selectedColorName: selectedColor?.name || null,
           selectedColorHex: selectedColor?.hex || null,
+          customizationText: customizationText.trim() || null,
         });
       }
 
@@ -517,6 +536,11 @@ export default function GiftCatalogScreen({
                         {cartItem.selectedColorName && (
                           <p style={styles.cartItemDetails}>
                             {formatGiftColor(cartItem.selectedColorName)}
+                          </p>
+                        )}
+                        {cartItem.customizationText && (
+                          <p style={styles.cartItemDetails}>
+                            Personalization: {cartItem.customizationText}
                           </p>
                         )}
                       </div>

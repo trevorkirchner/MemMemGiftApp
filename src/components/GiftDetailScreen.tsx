@@ -3,7 +3,11 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import { getGiftImageUrl } from "../utils/giftImageStorage";
 import { getDefaultGiftColor, parseGiftColors } from "../utils/giftColors";
-import { getGiftOptionLabel, parseGiftOptions } from "../utils/giftOptions";
+import {
+  getGiftOptionLabel,
+  getGiftOptionPointCost,
+  parseGiftOptionChoices,
+} from "../utils/giftOptions";
 
 const client = generateClient<Schema>();
 
@@ -16,7 +20,12 @@ type GiftDetailScreenProps = {
   remainingPoints: number;
   allowOverPoints: boolean;
   onBack: () => void;
-  onAddToCart: (gift: GiftItem, selectedOption?: string, selectedColorId?: string) => void;
+  onAddToCart: (
+    gift: GiftItem,
+    selectedOption?: string,
+    selectedColorId?: string,
+    customizationText?: string
+  ) => void;
 };
 
 export default function GiftDetailScreen({
@@ -32,15 +41,21 @@ export default function GiftDetailScreen({
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoadingImages, setIsLoadingImages] = useState(true);
-  const giftOptions = parseGiftOptions(detailGift.optionValues);
+  const giftOptions = parseGiftOptionChoices(detailGift.optionValues);
   const giftColors = parseGiftColors(detailGift.colorOptions);
-  const [selectedOption, setSelectedOption] = useState(giftOptions[0] ?? "");
+  const [selectedOption, setSelectedOption] = useState(giftOptions[0]?.label ?? "");
   const [selectedColorId, setSelectedColorId] = useState(
     getDefaultGiftColor(giftColors)?.id ?? ""
   );
+  const [customizationText, setCustomizationText] = useState("");
   const selectedColor =
     giftColors.find((color) => color.id === selectedColorId) ||
     getDefaultGiftColor(giftColors);
+  const selectedPointCost = getGiftOptionPointCost(
+    giftOptions,
+    selectedOption,
+    detailGift.pointCost ?? 0
+  );
 
   const sortedImages = useMemo(() => {
     const orderedImages = [...giftImages].sort((a, b) => {
@@ -63,11 +78,14 @@ export default function GiftDetailScreen({
   const activeImage = sortedImages[selectedImageIndex];
   const activeImageUrl = activeImage ? imageUrls[activeImage.id] : detailGift.imageUrl;
 
-  const cannotAfford = !allowOverPoints && (detailGift.pointCost ?? 0) > remainingPoints;
+  const cannotAfford = !allowOverPoints && selectedPointCost > remainingPoints;
   const requiresOption = giftOptions.length > 0;
   const requiresColor = giftColors.length > 0;
+  const requiresCustomization = Boolean(detailGift.customizationLabel);
   const missingRequiredSelection =
-    (requiresOption && !selectedOption) || (requiresColor && !selectedColor);
+    (requiresOption && !selectedOption) ||
+    (requiresColor && !selectedColor) ||
+    (requiresCustomization && !customizationText.trim());
 
   useEffect(() => {
     setDetailGift(gift);
@@ -76,11 +94,12 @@ export default function GiftDetailScreen({
   }, [gift.id]);
 
   useEffect(() => {
-    const nextOptions = parseGiftOptions(detailGift.optionValues);
+    const nextOptions = parseGiftOptionChoices(detailGift.optionValues);
     const nextColors = parseGiftColors(detailGift.colorOptions);
 
-    setSelectedOption(nextOptions[0] ?? "");
+    setSelectedOption(nextOptions[0]?.label ?? "");
     setSelectedColorId(getDefaultGiftColor(nextColors)?.id ?? "");
+    setCustomizationText("");
   }, [detailGift.id, detailGift.optionValues, detailGift.colorOptions]);
 
   useEffect(() => {
@@ -199,7 +218,7 @@ export default function GiftDetailScreen({
           </div>
 
           <aside style={styles.infoCard}>
-            <p style={styles.pointBadge}>{detailGift.pointCost} points</p>
+            <p style={styles.pointBadge}>{selectedPointCost} points</p>
 
             <h1 style={styles.title}>{detailGift.title}</h1>
 
@@ -223,8 +242,11 @@ export default function GiftDetailScreen({
                   style={styles.optionSelect}
                 >
                   {giftOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={option.label} value={option.label}>
+                      {option.label}
+                      {typeof option.pointCost === "number"
+                        ? ` - ${option.pointCost} points`
+                        : ""}
                     </option>
                   ))}
                 </select>
@@ -258,9 +280,41 @@ export default function GiftDetailScreen({
               </div>
             )}
 
+            {requiresCustomization && (
+              <div style={styles.optionBox}>
+                <label htmlFor="gift-customization" style={styles.optionLabel}>
+                  {detailGift.customizationLabel}
+                </label>
+                <input
+                  id="gift-customization"
+                  value={customizationText}
+                  onChange={(event) => setCustomizationText(event.target.value)}
+                  maxLength={detailGift.customizationMaxLength ?? undefined}
+                  placeholder="Enter text"
+                  style={styles.optionSelect}
+                />
+                <p style={styles.muted}>
+                  {detailGift.customizationHelpText ||
+                    "Short names or initials recommended."}
+                </p>
+                {detailGift.customizationMaxLength && (
+                  <p style={styles.muted}>
+                    {customizationText.length}/{detailGift.customizationMaxLength} characters
+                  </p>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => onAddToCart(detailGift, selectedOption, selectedColor?.id ?? "")}
+              onClick={() =>
+                onAddToCart(
+                  detailGift,
+                  selectedOption,
+                  selectedColor?.id ?? "",
+                  customizationText.trim()
+                )
+              }
               disabled={cannotAfford || missingRequiredSelection}
               style={{
                 ...styles.addButton,

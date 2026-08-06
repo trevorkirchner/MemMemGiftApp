@@ -50,6 +50,7 @@ export default function CheckoutScreen({
         selectedColorId: cartItem.selectedColorId ?? "",
         selectedColorName: cartItem.selectedColorName ?? "",
         selectedColorHex: cartItem.selectedColorHex ?? "",
+        customizationText: cartItem.customizationText ?? "",
         lineTotal: (cartItem.quantity ?? 0) * (cartItem.pointCostAtTime ?? 0),
       };
     });
@@ -166,6 +167,7 @@ export default function CheckoutScreen({
           selectedColorIdAtTime: row.selectedColorId || null,
           selectedColorNameAtTime: row.selectedColorName || null,
           selectedColorHexAtTime: row.selectedColorHex || null,
+          customizationTextAtTime: row.customizationText || null,
           quantity: row.quantity,
         });
       }
@@ -280,6 +282,11 @@ export default function CheckoutScreen({
                       {row.selectedColorName && (
                         <p style={styles.itemDetails}>
                           {formatGiftColor(row.selectedColorName)}
+                        </p>
+                      )}
+                      {row.customizationText && (
+                        <p style={styles.itemDetails}>
+                          Personalization: {row.customizationText}
                         </p>
                       )}
                     </div>

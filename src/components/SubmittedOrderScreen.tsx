@@ -172,6 +172,9 @@ export default function SubmittedOrderScreen({
           item.selectedColorNameAtTime
             ? formatGiftColor(item.selectedColorNameAtTime)
             : "",
+          item.customizationTextAtTime
+            ? `Personalization: ${item.customizationTextAtTime}`
+            : "",
         ].filter(Boolean);
 
         pdf.text(item.titleAtTime ?? "Gift Item", 48, 11, true, 46);
@@ -314,6 +317,11 @@ export default function SubmittedOrderScreen({
                           {item.selectedColorNameAtTime && (
                             <p style={styles.itemDetails}>
                               {formatGiftColor(item.selectedColorNameAtTime)}
+                            </p>
+                          )}
+                          {item.customizationTextAtTime && (
+                            <p style={styles.itemDetails}>
+                              Personalization: {item.customizationTextAtTime}
                             </p>
                           )}
                         </div>
