@@ -487,12 +487,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "15px",
   },
   detailGrid: {
-    display: "grid",
-    gridTemplateColumns: "minmax(min(100%, 560px), 1.15fr) minmax(min(100%, 360px), 0.85fr)",
+    display: "flex",
+    flexWrap: "wrap",
     gap: "clamp(18px, 4vw, 28px)",
     alignItems: "start",
   },
   galleryCard: {
+    flex: "1 1 360px",
+    minWidth: 0,
     backgroundColor: "#ffffff",
     borderRadius: "clamp(18px, 5vw, 24px)",
     border: "1px solid #dce8e1",
@@ -597,13 +599,13 @@ arrowIconLeft: {
     display: "block",
   },
   infoCard: {
+    flex: "1 1 340px",
+    minWidth: 0,
     backgroundColor: "#ffffff",
     borderRadius: "clamp(18px, 5vw, 24px)",
     border: "1px solid #dce8e1",
     boxShadow: "0 14px 40px rgba(0,0,0,0.1)",
     padding: "clamp(22px, 6vw, 28px)",
-    position: "sticky",
-    top: "16px",
     boxSizing: "border-box",
   },
   pointBadge: {
@@ -709,7 +711,7 @@ arrowIconLeft: {
   },
   colorGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 132px), 1fr))",
     gap: "10px",
   },
   colorOption: {
@@ -746,7 +748,7 @@ arrowIconLeft: {
   },
   graphicGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 118px), 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 106px), 1fr))",
     gap: "10px",
   },
   graphicOption: {

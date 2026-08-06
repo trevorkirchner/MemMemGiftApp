@@ -470,6 +470,9 @@ export default function GiftCatalogScreen({
                             ) : (
                             <div style={styles.placeholderImage}>No Image</div>
                             )}
+                            <span style={styles.pointBadgeOverlay}>
+                              {gift.pointCost} pts
+                            </span>
                         </button>
 
                         <div style={styles.cardBody}>
@@ -481,9 +484,6 @@ export default function GiftCatalogScreen({
                             >
                             {gift.title}
                           </button>
-                          <span style={styles.pointBadge}>
-                            {gift.pointCost} pts
-                          </span>
                         </div>
 
                         <p style={styles.description}>
@@ -659,6 +659,7 @@ const styles: Record<string, React.CSSProperties> = {
   pointsCard: {
     width: "min(100%, 300px)",
     minWidth: 0,
+    flex: "1 1 260px",
     boxSizing: "border-box",
     backgroundColor: "#ffffff",
     borderRadius: "20px",
@@ -693,24 +694,25 @@ const styles: Record<string, React.CSSProperties> = {
   layout: {
     maxWidth: "1280px",
     margin: "0 auto",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
-    gap: "clamp(18px, 4vw, 24px)",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "clamp(20px, 4vw, 28px)",
     alignItems: "start",
   },
   catalogArea: {
     minWidth: 0,
+    flex: "1 1 660px",
   },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
-    gap: "clamp(14px, 3vw, 18px)",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
+    gap: "clamp(18px, 3vw, 22px)",
     alignItems: "start",
   },
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: "18px",
-    boxShadow: "0 10px 26px rgba(0, 0, 0, 0.08)",
+    borderRadius: "20px",
+    boxShadow: "0 14px 34px rgba(0, 0, 0, 0.09)",
     overflow: "hidden",
     border: "1px solid #dce8e1",
     display: "flex",
@@ -725,7 +727,7 @@ const styles: Record<string, React.CSSProperties> = {
   height: "100%",
   objectFit: "contain",
   display: "block",
-  backgroundColor: "#edf3ef",
+  backgroundColor: "#f7f9f8",
 },
   placeholderImage: {
   width: "100%",
@@ -737,7 +739,7 @@ const styles: Record<string, React.CSSProperties> = {
   fontWeight: 700,
 },
   cardBody: {
-    padding: "14px 16px 16px",
+    padding: "16px 18px 18px",
     display: "flex",
     flexDirection: "column",
     flex: 1,
@@ -770,7 +772,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.45,
     margin: "10px 0 0",
     display: "-webkit-box",
-    WebkitLineClamp: 3,
+    WebkitLineClamp: 2,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
   },
@@ -814,8 +816,8 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "not-allowed",
   },
   cartPanel: {
-    position: "sticky",
-    top: "16px",
+    flex: "0 1 420px",
+    minWidth: "min(100%, 340px)",
     boxSizing: "border-box",
     backgroundColor: "#ffffff",
     borderRadius: "22px",
@@ -914,13 +916,30 @@ const styles: Record<string, React.CSSProperties> = {
   },
 imageButton: {
   width: "100%",
-  aspectRatio: "4 / 3",
+  aspectRatio: "1 / 1",
   border: "none",
-  padding: "10px",
+  padding: "16px",
+  boxSizing: "border-box",
   backgroundColor: "#f7f9f8",
   cursor: "pointer",
-  display: "block",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  position: "relative",
   overflow: "hidden",
+},
+pointBadgeOverlay: {
+  position: "absolute",
+  top: "14px",
+  right: "14px",
+  backgroundColor: "#e5f0ea",
+  color: "var(--tg-primary)",
+  borderRadius: "999px",
+  padding: "7px 11px",
+  fontWeight: 900,
+  fontSize: "13px",
+  boxShadow: "0 6px 14px rgba(18, 60, 44, 0.12)",
+  whiteSpace: "nowrap",
 },
 giftTitleButton: {
   border: "none",
@@ -928,7 +947,7 @@ giftTitleButton: {
   padding: 0,
   margin: 0,
   color: "var(--tg-primary)",
-  fontSize: "clamp(18px, 5.5vw, 20px)",
+  fontSize: "clamp(19px, 5.5vw, 22px)",
   lineHeight: 1.2,
   fontWeight: 900,
   cursor: "pointer",

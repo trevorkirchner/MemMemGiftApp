@@ -74,6 +74,7 @@ type CsvParticipantRow = {
 type SubmittedOrderExportRow = {
   tournamentName: string;
   orderId: string;
+  orderItemId: string;
   participantName: string;
   firstName: string;
   lastName: string;
@@ -81,15 +82,32 @@ type SubmittedOrderExportRow = {
   memberNumber: string;
   status: string;
   submittedAt: string;
-  startingPoints: number;
-  totalPointsUsed: number;
-  remainingPoints: number;
-  overagePoints: number;
-  dollarPerPoint: number;
-  amountOwed: number;
-  itemCount: number;
-  uniqueGiftCount: number;
-  giftDetails: string;
+  startingPoints: number | string;
+  totalPointsUsed: number | string;
+  remainingPoints: number | string;
+  overagePoints: number | string;
+  dollarPerPoint: number | string;
+  amountOwed: number | string;
+  itemCount: number | string;
+  uniqueGiftCount: number | string;
+  itemNumber: number;
+  giftItemId: string;
+  giftTitle: string;
+  giftDescription: string;
+  quantity: number;
+  pointsEach: number;
+  lineTotalPoints: number;
+  optionLabel: string;
+  optionValue: string;
+  colorId: string;
+  colorName: string;
+  colorHex: string;
+  graphicId: string;
+  graphicName: string;
+  graphicImageKey: string;
+  graphicImageUrl: string;
+  personalizationText: string;
+  manufacturerNotes: string;
 };
 
 type ButtonIconName =
@@ -1587,7 +1605,7 @@ async function deleteGiftImage(image: GiftImage) {
     const tournamentName = selectedTournament?.name ?? "";
     const dollarPerPoint = selectedTournament?.pointDollarValue ?? 0;
 
-    return ordersToExport.map((order) => {
+    return ordersToExport.flatMap((order) => {
       const participant = participantsById.get(order.participantId);
       const orderItemsForOrder = orderItems.filter(
         (item) => item.orderId === order.id
@@ -1599,8 +1617,7 @@ async function deleteGiftImage(image: GiftImage) {
         (total, item) => total + (item.quantity ?? 0),
         0
       );
-
-      return {
+      const baseRow = {
         tournamentName,
         orderId: order.id,
         participantName: participant
@@ -1620,26 +1637,97 @@ async function deleteGiftImage(image: GiftImage) {
         amountOwed: overagePoints * dollarPerPoint,
         itemCount,
         uniqueGiftCount: orderItemsForOrder.length,
-        giftDetails: orderItemsForOrder
-          .map((item) => {
-            const lineTotal =
-              (item.quantity ?? 0) * (item.pointCostAtTime ?? 0);
-            const optionText = item.selectedOptionAtTime
-              ? `, ${formatGiftOption(item.selectedOptionLabelAtTime, item.selectedOptionAtTime)}`
-              : "";
-            const colorText = item.selectedColorNameAtTime
-              ? `, ${formatGiftColor(item.selectedColorNameAtTime)}`
-              : "";
-            const graphicText = item.selectedGraphicNameAtTime
-              ? `, ${formatGiftGraphic(item.selectedGraphicNameAtTime)}`
-              : "";
-            const customizationText = item.customizationTextAtTime
-              ? `, Personalization: ${item.customizationTextAtTime}`
-              : "";
-            return `${item.titleAtTime} (Qty: ${item.quantity}${optionText}${colorText}${graphicText}${customizationText}, Points Each: ${item.pointCostAtTime}, Line Total: ${lineTotal})`;
-          })
-          .join(" | "),
       };
+
+      if (orderItemsForOrder.length === 0) {
+        return [{
+          ...baseRow,
+          orderItemId: "",
+          itemNumber: 0,
+          giftItemId: "",
+          giftTitle: "",
+          giftDescription: "",
+          quantity: 0,
+          pointsEach: 0,
+          lineTotalPoints: 0,
+          optionLabel: "",
+          optionValue: "",
+          colorId: "",
+          colorName: "",
+          colorHex: "",
+          graphicId: "",
+          graphicName: "",
+          graphicImageKey: "",
+          graphicImageUrl: "",
+          personalizationText: "",
+          manufacturerNotes: "No order items found for this submitted order.",
+        }];
+      }
+
+      return orderItemsForOrder.map((item, index) => {
+        const isFirstItemRow = index === 0;
+        const quantity = item.quantity ?? 0;
+        const pointsEach = item.pointCostAtTime ?? 0;
+        const lineTotalPoints = quantity * pointsEach;
+        const optionValue = item.selectedOptionAtTime ?? "";
+        const colorName = item.selectedColorNameAtTime ?? "";
+        const graphicName = item.selectedGraphicNameAtTime ?? "";
+        const personalizationText = item.customizationTextAtTime ?? "";
+        const manufacturerNotes = [
+          optionValue
+            ? formatGiftOption(item.selectedOptionLabelAtTime, optionValue)
+            : "",
+          colorName ? formatGiftColor(colorName) : "",
+          graphicName ? formatGiftGraphic(graphicName) : "",
+          personalizationText
+            ? `Personalization: ${personalizationText}`
+            : "No custom text",
+        ].filter(Boolean).join(" | ");
+
+        return {
+          ...baseRow,
+          ...(isFirstItemRow
+            ? {}
+            : {
+                tournamentName: "",
+                orderId: "",
+                participantName: "",
+                firstName: "",
+                lastName: "",
+                email: "",
+                memberNumber: "",
+                status: "",
+                submittedAt: "",
+                startingPoints: "",
+                totalPointsUsed: "",
+                remainingPoints: "",
+                overagePoints: "",
+                dollarPerPoint: "",
+                amountOwed: "",
+                itemCount: "",
+                uniqueGiftCount: "",
+              }),
+          orderItemId: item.id,
+          itemNumber: index + 1,
+          giftItemId: item.giftItemId,
+          giftTitle: item.titleAtTime ?? "",
+          giftDescription: item.descriptionAtTime ?? "",
+          quantity,
+          pointsEach,
+          lineTotalPoints,
+          optionLabel: item.selectedOptionLabelAtTime ?? "",
+          optionValue,
+          colorId: item.selectedColorIdAtTime ?? "",
+          colorName,
+          colorHex: item.selectedColorHexAtTime ?? "",
+          graphicId: item.selectedGraphicIdAtTime ?? "",
+          graphicName,
+          graphicImageKey: item.selectedGraphicImageKeyAtTime ?? "",
+          graphicImageUrl: item.selectedGraphicImageUrlAtTime ?? "",
+          personalizationText,
+          manufacturerNotes,
+        };
+      });
     });
   }
 
@@ -1653,6 +1741,8 @@ async function deleteGiftImage(image: GiftImage) {
     const headers: Array<keyof SubmittedOrderExportRow> = [
       "tournamentName",
       "orderId",
+      "orderItemId",
+      "itemNumber",
       "participantName",
       "firstName",
       "lastName",
@@ -1660,6 +1750,23 @@ async function deleteGiftImage(image: GiftImage) {
       "memberNumber",
       "status",
       "submittedAt",
+      "giftItemId",
+      "giftTitle",
+      "giftDescription",
+      "quantity",
+      "pointsEach",
+      "lineTotalPoints",
+      "optionLabel",
+      "optionValue",
+      "colorId",
+      "colorName",
+      "colorHex",
+      "graphicId",
+      "graphicName",
+      "graphicImageKey",
+      "graphicImageUrl",
+      "personalizationText",
+      "manufacturerNotes",
       "startingPoints",
       "totalPointsUsed",
       "remainingPoints",
@@ -1668,7 +1775,6 @@ async function deleteGiftImage(image: GiftImage) {
       "amountOwed",
       "itemCount",
       "uniqueGiftCount",
-      "giftDetails",
     ];
 
     const csv = [

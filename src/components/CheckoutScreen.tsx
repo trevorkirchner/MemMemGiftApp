@@ -437,6 +437,7 @@ const styles: Record<string, React.CSSProperties> = {
   pointsCard: {
     width: "min(100%, 300px)",
     minWidth: 0,
+    flex: "1 1 260px",
     boxSizing: "border-box",
     backgroundColor: "#ffffff",
     borderRadius: "20px",
@@ -469,12 +470,14 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: "10px",
   },
   checkoutGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+    display: "flex",
+    flexWrap: "wrap",
     gap: "clamp(18px, 4vw, 24px)",
     alignItems: "start",
   },
   orderCard: {
+    flex: "1 1 420px",
+    minWidth: 0,
     backgroundColor: "#ffffff",
     borderRadius: "22px",
     boxShadow: "0 14px 40px rgba(0, 0, 0, 0.1)",
@@ -483,8 +486,8 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
   },
   summaryCard: {
-    position: "sticky",
-    top: "16px",
+    flex: "1 1 320px",
+    minWidth: 0,
     backgroundColor: "#ffffff",
     borderRadius: "22px",
     boxShadow: "0 14px 40px rgba(0, 0, 0, 0.1)",
