@@ -82,14 +82,14 @@ type SubmittedOrderExportRow = {
   memberNumber: string;
   status: string;
   submittedAt: string;
-  startingPoints: number | string;
-  totalPointsUsed: number | string;
-  remainingPoints: number | string;
-  overagePoints: number | string;
-  dollarPerPoint: number | string;
-  amountOwed: number | string;
-  itemCount: number | string;
-  uniqueGiftCount: number | string;
+  startingPoints: number;
+  totalPointsUsed: number;
+  remainingPoints: number;
+  overagePoints: number;
+  dollarPerPoint: number;
+  amountOwed: number;
+  itemCount: number;
+  uniqueGiftCount: number;
   itemNumber: number;
   giftItemId: string;
   giftTitle: string;
@@ -1665,7 +1665,6 @@ async function deleteGiftImage(image: GiftImage) {
       }
 
       return orderItemsForOrder.map((item, index) => {
-        const isFirstItemRow = index === 0;
         const quantity = item.quantity ?? 0;
         const pointsEach = item.pointCostAtTime ?? 0;
         const lineTotalPoints = quantity * pointsEach;
@@ -1686,27 +1685,6 @@ async function deleteGiftImage(image: GiftImage) {
 
         return {
           ...baseRow,
-          ...(isFirstItemRow
-            ? {}
-            : {
-                tournamentName: "",
-                orderId: "",
-                participantName: "",
-                firstName: "",
-                lastName: "",
-                email: "",
-                memberNumber: "",
-                status: "",
-                submittedAt: "",
-                startingPoints: "",
-                totalPointsUsed: "",
-                remainingPoints: "",
-                overagePoints: "",
-                dollarPerPoint: "",
-                amountOwed: "",
-                itemCount: "",
-                uniqueGiftCount: "",
-              }),
           orderItemId: item.id,
           itemNumber: index + 1,
           giftItemId: item.giftItemId,
